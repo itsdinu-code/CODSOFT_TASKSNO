@@ -34,7 +34,11 @@ EduManage is a student management system built with Next.js, TypeScript, Tailwin
 
 Use `npm run db:studio` to open Prisma Studio. For future schema changes during development, use `npm run db:migrate -- --name <migration-name>` and commit the generated migration.
 
-The student directory uses `GET` and `POST /api/students`. If the database is not configured or reachable, the dashboard clearly labels its student data as sample data and prevents student creation. The schema in `prisma/schema.prisma` also models users and roles, teachers, classrooms, subjects, teaching assignments, attendance, examinations and results, fee invoices and payments, and academic records; these other areas are not yet connected to database routes. The shared Prisma client in `app/lib/prisma.ts` is intended for server-side use only.
+The student directory uses `GET` and `POST /api/students`; `POST /api/students/import` imports CSV records. A newly migrated database starts with no students, so an empty list means there are no records yet, not that the database is disconnected. Add real records with **Add student** or **Import CSV** in the dashboard.
+
+The CSV importer requires `Name`, `Email`, and `Class` columns. `Status` is optional and accepts `Active`, `On leave`, `Pending`, or `Graduated`. Class values should look like `Grade 10 · Section A`. Other columns, including aggregate `Attendance` percentages, are ignored because they cannot create dated attendance records. Imports are limited to 500 rows and 1 MB, are atomic, and reject duplicate email addresses. Do not import the dashboard's built-in example data as real student records.
+
+If the database is not configured or reachable, the dashboard reports that student records could not be loaded and disables CSV export and student creation. The schema in `prisma/schema.prisma` also models users and roles, teachers, classrooms, subjects, teaching assignments, attendance, examinations and results, fee invoices and payments, and academic records; these other areas are not yet connected to database routes and still use sample data. The shared Prisma client in `app/lib/prisma.ts` is intended for server-side use only.
 
 ## Other commands
 

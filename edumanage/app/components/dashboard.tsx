@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { activities, schedule, students, type Student, type UserRole } from "../data";
+import { activities, schedule, type Student, type UserRole } from "../data";
 import { Icon, type IconName } from "./ui-icon";
 
 const navigation: { label: string; icon: IconName; count?: string }[] = [
@@ -371,6 +371,7 @@ function StudentTable({
   statusFilter,
   onStatusFilterChange,
   onAddStudent,
+  onImportStudents,
   onViewStudent,
   onNotice,
   onViewAll,
@@ -382,12 +383,14 @@ function StudentTable({
   statusFilter: Student["status"] | "All";
   onStatusFilterChange: (status: Student["status"] | "All") => void;
   onAddStudent: () => void;
+  onImportStudents: (file: File) => void;
   onViewStudent: (student: Student) => void;
   onNotice: (notice: DashboardNotice) => void;
   onViewAll: () => void;
   isDatabaseConnected: boolean;
   isLoading: boolean;
 }) {
+  const csvInputRef = useRef<HTMLInputElement>(null);
   const filteredStudents = useMemo(
     () =>
       studentList.filter((student) =>
@@ -427,6 +430,25 @@ function StudentTable({
               <option value="Graduated">Graduated</option>
             </select>
           </label>
+          <input
+            ref={csvInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0];
+              if (file) onImportStudents(file);
+              event.currentTarget.value = "";
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => csvInputRef.current?.click()}
+            disabled={!isDatabaseConnected}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Import CSV
+          </button>
           <button type="button" onClick={onAddStudent} className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-xs font-medium text-white transition hover:bg-[#173528]">
             <Icon name="plus" className="h-4 w-4" />
             Add student
@@ -478,7 +500,13 @@ function StudentTable({
                       <Icon name="students" className="size-5" />
                     </span>
                     <p className="text-sm font-semibold text-foreground">No students found</p>
-                    <p className="text-xs text-muted">{query ? "Try changing your search or status filter." : "Students will appear here when they are available."}</p>
+                    <p className="text-xs text-muted">
+                      {query
+                        ? "Try changing your search or status filter."
+                        : isDatabaseConnected
+                          ? "There are no student records in PostgreSQL yet. Add a student or import your real student CSV."
+                          : "Student records are unavailable until PostgreSQL is connected."}
+                    </p>
                   </div>
                 </td>
               </tr>
@@ -743,7 +771,7 @@ export function Dashboard() {
   const [activeSection, setActiveSection] = useState("Overview");
   const [query, setQuery] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [studentList, setStudentList] = useState<Student[]>(students);
+  const [studentList, setStudentList] = useState<Student[]>([]);
   const [databaseStatus, setDatabaseStatus] = useState<"loading" | "connected" | "offline">("loading");
   const [studentSavePending, setStudentSavePending] = useState(false);
   const [studentSaveError, setStudentSaveError] = useState("");
@@ -757,6 +785,13 @@ export function Dashboard() {
   const [dateRange, setDateRange] = useState("Oct 1 – Oct 31, 2025");
   const searchInputRef = useRef<HTMLInputElement>(null);
   const stats = roleStats[role];
+  const displayedStats = stats.map((stat, index) => {
+    if (role !== "Admin" || index !== 0) return stat;
+    return {
+      ...stat,
+      value: databaseStatus === "connected" ? studentList.length.toLocaleString() : "Unavailable",
+    };
+  });
   const greeting = role === "Student" ? "Welcome back, Olivia" : "Good morning, Alex";
   const userName = role === "Student" ? "Olivia Rhye" : "Alex Morgan";
 
@@ -775,6 +810,7 @@ export function Dashboard() {
       })
       .catch((error: unknown) => {
         if (!active) return;
+        setStudentList([]);
         setDatabaseStatus("offline");
         console.error(
           "Could not load students from PostgreSQL.",
@@ -808,6 +844,8 @@ export function Dashboard() {
   }
 
   function exportStudents() {
+    if (databaseStatus !== "connected" || studentList.length === 0) return;
+
     const header = ["Name", "Email", "Class", "Attendance", "Status"];
     const rows = studentList.map((student) => [
       student.name,
@@ -825,7 +863,7 @@ export function Dashboard() {
     link.download = "edumanage-students.csv";
     link.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-    showNotice({ title: "Student list exported", message: "Your sample student list was downloaded as a CSV file." });
+    showNotice({ title: "Student list exported", message: `${studentList.length} database student records were downloaded as a CSV.` });
   }
 
   async function addStudent(event: FormEvent<HTMLFormElement>) {
@@ -867,6 +905,51 @@ export function Dashboard() {
       setStudentSaveError(message);
     } finally {
       setStudentSavePending(false);
+    }
+  }
+
+  async function importStudents(file: File) {
+    if (file.size > 1024 * 1024) {
+      showNotice({ title: "CSV is too large", message: "Choose a CSV file smaller than 1 MB." });
+      return;
+    }
+
+    let importedCount: number | null = null;
+    try {
+      const response = await fetch("/api/students/import", {
+        method: "POST",
+        headers: { "Content-Type": "text/csv; charset=utf-8" },
+        body: await file.text(),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(typeof result.error === "string" ? result.error : "Could not import students.");
+      }
+      importedCount = result.imported;
+
+      const studentsResponse = await fetch("/api/students");
+      const studentsResult = await studentsResponse.json();
+      if (!studentsResponse.ok || !Array.isArray(studentsResult.data)) {
+        throw new Error("Students were imported, but the refreshed directory could not be loaded.");
+      }
+
+      setStudentList(studentsResult.data as Student[]);
+      setDatabaseStatus("connected");
+      setStatusFilter("All");
+      setQuery("");
+      showNotice({
+        title: "Students imported",
+        message: `${result.imported} real student records were saved to PostgreSQL.${result.ignoredColumns?.length ? ` Ignored columns: ${result.ignoredColumns.join(", ")}.` : ""}`,
+      });
+    } catch (error) {
+      showNotice({
+        title: importedCount === null ? "Student import failed" : "Students imported; refresh failed",
+        message: error instanceof Error
+          ? error.message
+          : importedCount === null
+            ? "Could not import students."
+            : "The imported records are saved. Reload the page to refresh the directory.",
+      });
     }
   }
 
@@ -991,7 +1074,7 @@ export function Dashboard() {
         </header>
         {databaseStatus === "offline" && (
           <div role="alert" className="mx-4 mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900 sm:mx-7 lg:mx-9">
-            PostgreSQL is not connected. Student data shown is sample data; new students cannot be saved.
+            Student records could not be loaded from PostgreSQL. Reconnect the database to view or save real student records.
           </div>
         )}
 
@@ -1045,18 +1128,24 @@ export function Dashboard() {
                 </div>
               )}
               </div>
-              <button type="button" onClick={exportStudents} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs font-medium text-slate-600 shadow-sm transition hover:bg-slate-50">
+              <button type="button" onClick={exportStudents} disabled={databaseStatus !== "connected" || studentList.length === 0} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs font-medium text-slate-600 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">
                 <Icon name="download" className="h-4 w-4" /> Export
               </button>
             </div>
           </div>
+
+          {activeSection !== "Students" && activeSection !== "Overview" && (
+            <div role="status" className="mb-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+              {`${activeSection} is a demo preview and is not connected to PostgreSQL yet.`}
+            </div>
+          )}
 
           {activeSection === "Overview" ? (
             <>
               <div className="mb-6 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
                 {databaseStatus === "loading"
                   ? stats.map((stat) => <StatCardSkeleton key={`${stat.label}-loading`} />)
-                  : stats.map((stat, index) => <StatCard key={stat.label} stat={stat} index={index} />)}
+                  : displayedStats.map((stat, index) => <StatCard key={stat.label} stat={stat} index={index} />)}
               </div>
 
               <div className={`mb-6 grid grid-cols-1 gap-6 ${role === "Student" ? "xl:grid-cols-[1.35fr_0.9fr]" : "xl:grid-cols-[1.5fr_0.9fr]"}`}>
@@ -1069,6 +1158,7 @@ export function Dashboard() {
                     statusFilter={statusFilter}
                     onStatusFilterChange={setStatusFilter}
                     onAddStudent={() => setDialog("add-student")}
+                    onImportStudents={importStudents}
                     onViewStudent={(student) => {
                       setSelectedStudent(student);
                       setDialog("student");
@@ -1098,6 +1188,7 @@ export function Dashboard() {
               statusFilter={statusFilter}
               onStatusFilterChange={setStatusFilter}
               onAddStudent={() => setDialog("add-student")}
+              onImportStudents={importStudents}
               onViewStudent={(student) => {
                 setSelectedStudent(student);
                 setDialog("student");
