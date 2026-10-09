@@ -86,6 +86,10 @@ textarea {
   background: transparent;
 }
 
+.route-transition {
+  animation: dashboard-appear 220ms ease-out both;
+}
+
 .dashboard-card {
   border-color: var(--border);
   background: var(--surface);

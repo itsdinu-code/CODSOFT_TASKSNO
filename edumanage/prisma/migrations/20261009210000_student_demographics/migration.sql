@@ -1,0 +1,4 @@
+ALTER TABLE "Student"
+ADD COLUMN "sex" TEXT,
+ADD COLUMN "age" INTEGER,
+ADD COLUMN "address" TEXT;

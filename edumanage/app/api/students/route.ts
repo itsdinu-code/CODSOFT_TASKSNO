@@ -74,7 +74,7 @@ export async function GET() {
     const prisma = getPrismaClient();
     const records = await prisma.student.findMany({
       orderBy: [{ createdAt: "desc" }, { lastName: "asc" }],
-      take: 250,
+      take: 1000,
       select: {
         id: true,
         firstName: true,

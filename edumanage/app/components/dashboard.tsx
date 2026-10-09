@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { AnimatePresence, MotionConfig, animate, motion, useMotionValue, useReducedMotion, useTransform } from "motion/react";
 import { activities, schedule, type Student, type UserRole } from "../data";
 import { Icon, type IconName } from "./ui-icon";
+import { SchoolModule } from "./school-module";
 
 const navigation: { label: string; icon: IconName; count?: string }[] = [
   { label: "Overview", icon: "overview" },
@@ -117,26 +119,6 @@ const sectionRows: Record<string, { title: string; detail: string; status: strin
     { title: "Priya Sharma", detail: "Science · Grades 8–10", status: "Active" },
     { title: "Anna Taylor", detail: "English · Grades 10–12", status: "On leave" },
     { title: "David Chen", detail: "History · Grades 8–10", status: "Inactive" },
-  ],
-  Attendance: [
-    { title: "Grade 10 · Section A", detail: "28 of 30 students present", status: "93%" },
-    { title: "Grade 9 · Section B", detail: "31 of 32 students present", status: "97%" },
-    { title: "Grade 11 · Section A", detail: "26 of 29 students present", status: "90%" },
-  ],
-  Examinations: [
-    { title: "Mathematics · Midterm", detail: "Grade 10 · 30 students", status: "Oct 14" },
-    { title: "Science · Practical", detail: "Grade 9 · 32 students", status: "Oct 17" },
-    { title: "English · Literature", detail: "Grade 11 · 29 students", status: "Oct 21" },
-  ],
-  Fees: [
-    { title: "Term 2 tuition", detail: "Due Oct 15 · 1,248 invoices", status: "₹6.18L pending" },
-    { title: "Transport fees", detail: "Due Oct 20 · 386 invoices", status: "₹1.24L pending" },
-    { title: "Recent collection", detail: "Received today · Marcus Reed", status: "₹12,500 paid" },
-  ],
-  "Academic records": [
-    { title: "Mathematics", detail: "Grade 10 · Class average 84%", status: "A−" },
-    { title: "Science", detail: "Grade 10 · Class average 81%", status: "B+" },
-    { title: "English", detail: "Grade 10 · Class average 88%", status: "A" },
   ],
   Settings: [
     { title: "School profile", detail: "Northstar Academy · Update school details", status: "Manage" },
@@ -333,8 +315,11 @@ function StatCard({
   stat: (typeof roleStats)[UserRole][number];
   index: number;
 }) {
+  const targetValue = parseStatValue(stat.value);
+  const prefersReducedMotion = useReducedMotion();
+
   return (
-    <article className="dashboard-card rounded-xl border p-6">
+    <motion.article variants={prefersReducedMotion ? undefined : fadeUp} className="dashboard-card rounded-xl border p-6">
       <div className="flex items-start justify-between">
         <span className={`flex h-10 w-10 items-center justify-center rounded-xl ${stat.accent}`}>
           <Icon name={stat.icon} className="h-5 w-5" />
@@ -347,9 +332,60 @@ function StatCard({
         </span>
       </div>
       <p className="mt-4 text-[13px] font-medium text-slate-500">{stat.label}</p>
-      <p className="mt-1 text-[25px] font-semibold tracking-tight text-slate-900">{stat.value}</p>
-    </article>
+      <p className="mt-1 text-[25px] font-semibold tracking-tight text-slate-900">
+        {targetValue ? <AnimatedStatValue value={targetValue} /> : stat.value}
+      </p>
+    </motion.article>
   );
+}
+
+const fadeUp = {
+  hidden: { opacity: 0, y: 7 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.22, ease: "easeOut" as const } },
+};
+
+const staggerCards = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.035, delayChildren: 0.015 } },
+};
+
+function parseStatValue(value: string): { number: number; prefix: string; suffix: string; decimals: number } | null {
+  const match = /^([^\d-]*)(-?[\d,]+(?:\.\d+)?)(.*)$/.exec(value);
+  if (!match) return null;
+  const number = Number(match[2].replaceAll(",", ""));
+  if (!Number.isFinite(number)) return null;
+  return {
+    number,
+    prefix: match[1],
+    suffix: match[3],
+    decimals: match[2].split(".")[1]?.length ?? 0,
+  };
+}
+
+function AnimatedStatValue({
+  value,
+}: {
+  value: { number: number; prefix: string; suffix: string; decimals: number };
+}) {
+  const prefersReducedMotion = useReducedMotion();
+  const count = useMotionValue(prefersReducedMotion ? value.number : 0);
+  const display = useTransform(count, (current) =>
+    `${value.prefix}${current.toLocaleString(undefined, {
+      minimumFractionDigits: value.decimals,
+      maximumFractionDigits: value.decimals,
+    })}${value.suffix}`,
+  );
+
+  useEffect(() => {
+    if (prefersReducedMotion) {
+      count.set(value.number);
+      return;
+    }
+    const controls = animate(count, value.number, { duration: 0.32, ease: "easeOut" });
+    return controls.stop;
+  }, [count, prefersReducedMotion, value.number]);
+
+  return <motion.span>{display}</motion.span>;
 }
 
 function StatCardSkeleton() {
@@ -391,6 +427,7 @@ function StudentTable({
   isLoading: boolean;
 }) {
   const csvInputRef = useRef<HTMLInputElement>(null);
+  const prefersReducedMotion = useReducedMotion();
   const filteredStudents = useMemo(
     () =>
       studentList.filter((student) =>
@@ -401,7 +438,12 @@ function StudentTable({
   );
 
   return (
-    <section className="dashboard-card overflow-hidden rounded-xl border">
+    <motion.section
+      initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: prefersReducedMotion ? 0 : 0.24, ease: "easeOut" }}
+      className="dashboard-card overflow-hidden rounded-xl border"
+    >
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-6 py-6">
         <div>
           <h2 className="text-sm font-semibold text-slate-900">Recently enrolled students</h2>
@@ -477,10 +519,12 @@ function StudentTable({
                   <td className="px-6 py-4" />
                 </tr>
               ))
-            ) : filteredStudents.map((student) => (
+            ) : filteredStudents.map((student, index) => (
               <StudentRow
                 key={student.email}
                 student={student}
+                animationIndex={index < 12 ? index : undefined}
+                prefersReducedMotion={Boolean(prefersReducedMotion)}
                 onView={() => onViewStudent(student)}
                 onNotice={() =>
                   onNotice({
@@ -524,7 +568,7 @@ function StudentTable({
           View all students <Icon name="arrow" className="h-3.5 w-3.5" />
         </button>
       </div>
-    </section>
+    </motion.section>
   );
 }
 
@@ -532,10 +576,14 @@ function StudentRow({
   student,
   onView,
   onNotice,
+  animationIndex,
+  prefersReducedMotion,
 }: {
   student: Student;
   onView: () => void;
   onNotice: () => void;
+  animationIndex?: number;
+  prefersReducedMotion: boolean;
 }) {
   const statusClass: Record<Student["status"], string> = {
     Active: "status-active",
@@ -545,8 +593,8 @@ function StudentRow({
     Graduated: "status-neutral",
   };
 
-  return (
-    <tr className="transition hover:bg-slate-50/60">
+  const cells = (
+    <>
       <td className="px-5 py-3.5">
         <div className="flex items-center gap-3">
           <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${student.avatarColor}`}>{student.initials}</span>
@@ -575,7 +623,23 @@ function StudentRow({
           <Icon name="dots" className="h-5 w-5" />
         </button>
       </td>
-    </tr>
+    </>
+  );
+  return animationIndex === undefined ? (
+    <tr className="transition hover:bg-slate-50/60">{cells}</tr>
+  ) : (
+    <motion.tr
+      initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{
+        duration: prefersReducedMotion ? 0 : 0.22,
+        delay: prefersReducedMotion ? 0 : animationIndex * 0.014,
+        ease: "easeOut",
+      }}
+      className="transition hover:bg-slate-50/60"
+    >
+      {cells}
+    </motion.tr>
   );
 }
 
@@ -589,7 +653,7 @@ function AttendanceChart({
   isLoading: boolean;
 }) {
   return (
-    <section className="dashboard-card dashboard-card-primary overflow-hidden rounded-xl border p-6 text-white">
+    <section className="dashboard-card dashboard-card-primary self-start overflow-hidden rounded-xl border p-6 text-white">
       <div className="flex items-start justify-between">
         <div>
           <h2 className="text-sm font-semibold text-white">Attendance overview</h2>
@@ -767,6 +831,7 @@ function StudentAcademicSnapshot({ onNotice }: { onNotice: (notice: DashboardNot
 }
 
 export function Dashboard() {
+  const prefersReducedMotion = useReducedMotion();
   const [role, setRole] = useState<UserRole>("Admin");
   const [activeSection, setActiveSection] = useState("Overview");
   const [query, setQuery] = useState("");
@@ -954,16 +1019,40 @@ export function Dashboard() {
   }
 
   return (
+    <MotionConfig reducedMotion="user">
     <div className="dashboard-canvas min-h-screen text-foreground">
-      {sidebarOpen && (
-        <button
-          type="button"
-          aria-label="Close navigation overlay"
-          onClick={() => setSidebarOpen(false)}
-          className="fixed inset-0 z-40 bg-slate-950/40 lg:hidden"
-        />
-      )}
-      <div className={`fixed inset-y-0 left-0 z-50 ${sidebarOpen ? "flex" : "hidden"} lg:flex`}>
+      <AnimatePresence>
+        {sidebarOpen && (
+          <>
+            <motion.button
+              type="button"
+              aria-label="Close navigation overlay"
+              onClick={() => setSidebarOpen(false)}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: prefersReducedMotion ? 0 : 0.2 }}
+              className="fixed inset-0 z-40 bg-slate-950/40 lg:hidden"
+            />
+            <motion.div
+              initial={prefersReducedMotion ? false : { x: -24, opacity: 0.8 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={prefersReducedMotion ? undefined : { x: -24, opacity: 0.8 }}
+              transition={{ duration: prefersReducedMotion ? 0 : 0.22, ease: "easeOut" }}
+              className="fixed inset-y-0 left-0 z-50 flex lg:hidden"
+            >
+              <Sidebar
+                role={role}
+                activeSection={activeSection}
+                onNavigate={navigate}
+                onClose={() => setSidebarOpen(false)}
+                onNotice={showNotice}
+              />
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+      <div className="fixed inset-y-0 left-0 z-30 hidden lg:flex">
         <Sidebar
           role={role}
           activeSection={activeSection}
@@ -1134,19 +1223,37 @@ export function Dashboard() {
             </div>
           </div>
 
-          {activeSection !== "Students" && activeSection !== "Overview" && (
+          {activeSection !== "Students" &&
+            activeSection !== "Overview" &&
+            activeSection !== "Attendance" &&
+            activeSection !== "Examinations" &&
+            activeSection !== "Fees" &&
+            activeSection !== "Academic records" && (
             <div role="status" className="mb-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
               {`${activeSection} is a demo preview and is not connected to PostgreSQL yet.`}
             </div>
           )}
 
+          <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={activeSection}
+            initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={prefersReducedMotion ? undefined : { opacity: 0, y: -3 }}
+            transition={{ duration: prefersReducedMotion ? 0 : 0.2, ease: "easeOut" }}
+          >
           {activeSection === "Overview" ? (
             <>
-              <div className="mb-6 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+              <motion.div
+                variants={prefersReducedMotion ? undefined : staggerCards}
+                initial="hidden"
+                animate="show"
+                className="mb-6 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4"
+              >
                 {databaseStatus === "loading"
                   ? stats.map((stat) => <StatCardSkeleton key={`${stat.label}-loading`} />)
                   : displayedStats.map((stat, index) => <StatCard key={stat.label} stat={stat} index={index} />)}
-              </div>
+              </motion.div>
 
               <div className={`mb-6 grid grid-cols-1 gap-6 ${role === "Student" ? "xl:grid-cols-[1.35fr_0.9fr]" : "xl:grid-cols-[1.5fr_0.9fr]"}`}>
                 {role === "Student" ? (
@@ -1201,6 +1308,11 @@ export function Dashboard() {
                 setStatusFilter("All");
               }}
             />
+          ) : activeSection === "Attendance" ||
+            activeSection === "Examinations" ||
+            activeSection === "Fees" ||
+            activeSection === "Academic records" ? (
+            <SchoolModule section={activeSection} />
           ) : (
             <SectionPanel
               section={activeSection}
@@ -1210,6 +1322,8 @@ export function Dashboard() {
               })}
             />
           )}
+          </motion.div>
+          </AnimatePresence>
 
           <p className="mt-7 text-center text-[10px] text-slate-400">EduManage — Northstar Academy — Academic year 2025–2026</p>
         </div>
@@ -1271,5 +1385,6 @@ export function Dashboard() {
         </Dialog>
       )}
     </div>
+    </MotionConfig>
   );
 }
