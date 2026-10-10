@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { animate, motion, useMotionValue, useReducedMotion, useTransform } from "motion/react";
@@ -26,9 +26,9 @@ import {
   Wallet,
 } from "lucide-react";
 import {
+  Area,
+  AreaChart,
   CartesianGrid,
-  Line,
-  LineChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -95,10 +95,10 @@ const sectionTitles: Record<Section, string> = {
 };
 
 const pastelCards = [
-  { label: "Total Students", key: "students", icon: Users, className: "bg-[#eee9ff]", decor: "text-[#704fd6]" },
-  { label: "Total Teachers", key: "teachers", icon: GraduationCap, className: "bg-[#e4f2ff]", decor: "text-[#397fb5]" },
-  { label: "Avg Attendance", key: "attendance", icon: Activity, className: "bg-[#e5f3e9]", decor: "text-[#448a5b]" },
-  { label: "Due Fees", key: "dueFees", icon: Wallet, className: "bg-[#fff0e4]", decor: "text-[#e8622c]" },
+  { label: "Total Students", key: "students", icon: Users, className: "bg-white", iconClassName: "bg-[#eee9ff] text-[#704fd6]", decor: "text-[#704fd6]" },
+  { label: "Total Teachers", key: "teachers", icon: GraduationCap, className: "bg-white", iconClassName: "bg-[#e4f2ff] text-[#397fb5]", decor: "text-[#397fb5]" },
+  { label: "Avg Attendance", key: "attendance", icon: Activity, className: "bg-white", iconClassName: "bg-[#e5f3e9] text-[#448a5b]", decor: "text-[#448a5b]" },
+  { label: "Due Fees", key: "dueFees", icon: Wallet, className: "bg-white", iconClassName: "bg-[#fff0e4] text-[#e8622c]", decor: "text-[#e8622c]" },
 ] as const;
 
 const fallbackOverview: OverviewResponse = {
@@ -158,7 +158,7 @@ function Panel({
   children: React.ReactNode;
   className?: string;
 }) {
-  return <section className={`min-w-0 rounded-3xl border border-white/80 bg-white/90 p-5 shadow-sm sm:p-6 ${className}`}>{children}</section>;
+  return <section className={`dashboard-card min-w-0 rounded-3xl border border-white/90 bg-white/90 p-5 shadow-[0_10px_30px_rgba(36,48,60,0.055)] backdrop-blur-xl transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(36,48,60,0.09)] sm:p-6 ${className}`}>{children}</section>;
 }
 
 function PanelHeading({ title, detail, action }: { title: string; detail?: string; action?: React.ReactNode }) {
@@ -225,9 +225,9 @@ function MetricCard({
       initial={prefersReducedMotion ? false : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: prefersReducedMotion ? 0 : 0.24, delay: prefersReducedMotion ? 0 : index * 0.035, ease: "easeOut" }}
-      className={`relative isolate flex min-h-[170px] flex-col overflow-hidden rounded-3xl p-5 shadow-sm ${item.className}`}
+      className={`dashboard-card relative isolate flex min-h-[170px] flex-col overflow-hidden rounded-3xl border border-white/90 p-5 shadow-[0_10px_30px_rgba(36,48,60,0.055)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(36,48,60,0.09)] ${item.className}`}
     >
-      <span className="flex size-10 items-center justify-center rounded-2xl bg-white text-[#0a0a0a] shadow-sm">
+      <span className={`flex size-10 items-center justify-center rounded-2xl shadow-sm ${item.iconClassName}`}>
         <Icon size={19} strokeWidth={1.8} aria-hidden="true" />
       </span>
       <p className="mt-4 text-xs font-medium text-slate-600">{item.label}</p>
@@ -244,6 +244,7 @@ function MetricCard({
 }
 
 function RevenuePanel({ data, loading, error }: { data: OverviewResponse; loading: boolean; error: string }) {
+  const prefersReducedMotion = useReducedMotion();
   const total = data.revenue.reduce((sum, month) => sum + month.invoiced, 0);
   const collected = data.revenue.reduce((sum, month) => sum + month.collected, 0);
   if (loading) return <LoadingPanel title="Revenue Statistic" />;
@@ -265,11 +266,16 @@ function RevenuePanel({ data, loading, error }: { data: OverviewResponse; loadin
       ) : (
         <div className="h-[230px] w-full" aria-label="Monthly fee and payment totals">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data.revenue} margin={{ top: 12, right: 12, left: 0, bottom: 0 }}>
+            <AreaChart data={data.revenue} margin={{ top: 12, right: 12, left: 0, bottom: 0 }}>
               <defs>
-                <filter id="orange-line-shadow" x="-30%" y="-30%" width="160%" height="160%">
-                  <feDropShadow dx="0" dy="4" stdDeviation="4" floodColor="#e8622c" floodOpacity="0.18" />
-                </filter>
+                <linearGradient id="revenue-area-gradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#e8622c" stopOpacity={0.2} />
+                  <stop offset="95%" stopColor="#e8622c" stopOpacity={0.015} />
+                </linearGradient>
+                <linearGradient id="collected-area-gradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#f5b16f" stopOpacity={0.13} />
+                  <stop offset="95%" stopColor="#f5b16f" stopOpacity={0} />
+                </linearGradient>
               </defs>
               <CartesianGrid vertical={false} stroke="#d9dde4" strokeDasharray="4 6" />
               <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: "#8b909b", fontSize: 11 }} />
@@ -277,9 +283,9 @@ function RevenuePanel({ data, loading, error }: { data: OverviewResponse; loadin
                 formatter={(value, name) => [formatMoney(Number(value)), name === "invoiced" ? "Total fee" : "Collected"]}
                 contentStyle={{ borderRadius: 14, border: "1px solid #eef0f3", fontSize: 12 }}
               />
-              <Line dataKey="invoiced" type="monotone" stroke="#e8622c" strokeWidth={3} dot={false} activeDot={{ r: 4 }} filter="url(#orange-line-shadow)" />
-              <Line dataKey="collected" type="monotone" stroke="#f5b16f" strokeWidth={2} strokeDasharray="5 5" dot={false} activeDot={{ r: 3 }} />
-            </LineChart>
+              <Area dataKey="invoiced" type="monotone" stroke="#e8622c" strokeWidth={3} fill="url(#revenue-area-gradient)" dot={false} activeDot={{ r: 4 }} isAnimationActive={!prefersReducedMotion} animationDuration={280} />
+              <Area dataKey="collected" type="monotone" stroke="#f5b16f" strokeWidth={2} fill="url(#collected-area-gradient)" dot={false} activeDot={{ r: 3 }} isAnimationActive={!prefersReducedMotion} animationDuration={280} />
+            </AreaChart>
           </ResponsiveContainer>
         </div>
       )}
@@ -380,6 +386,7 @@ function CalendarPanel({
   dots: Record<string, number>;
   today: Date;
 }) {
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const firstDay = new Date(month.getFullYear(), month.getMonth(), 1).getDay();
   const totalDays = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
   const count = Math.ceil((firstDay + totalDays) / 7) * 7;
@@ -405,14 +412,21 @@ function CalendarPanel({
             ? `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`
             : "";
           const isToday = inMonth && day === today.getDate() && month.getMonth() === today.getMonth() && month.getFullYear() === today.getFullYear();
+          const selected = inMonth && selectedDate === key;
           return (
             <span key={`${key || "blank"}-${index}`} className="relative mx-auto flex size-8 items-center justify-center">
-              {inMonth && <span className={`flex size-7 items-center justify-center rounded-full text-[11px] ${isToday ? "bg-[#e8622c] font-semibold text-white" : "text-slate-700"}`}>{day}</span>}
+              {inMonth && <button type="button" aria-label={`${new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long" }).format(new Date(month.getFullYear(), month.getMonth(), day))} ${day}${dots[key] ? `, ${dots[key]} events` : ""}`} aria-pressed={selected} onClick={() => setSelectedDate(key)} className={`flex size-7 items-center justify-center rounded-full text-[11px] transition hover:bg-orange-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#e8622c] ${isToday ? "bg-[#e8622c] font-semibold text-white hover:bg-[#d95625]" : selected ? "bg-slate-900 font-semibold text-white hover:bg-slate-800" : "text-slate-700"}`}>{day}</button>}
               {inMonth && dots[key] && <i aria-label={`${dots[key]} events`} className={`absolute bottom-0.5 size-1 rounded-full ${isToday ? "bg-[#e8622c]" : "bg-violet-500"}`} />}
             </span>
           );
         })}
       </div>
+      {selectedDate?.startsWith(`${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, "0")}`) && (
+        <p aria-live="polite" className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-[10px] text-slate-500">
+          {new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric" }).format(new Date(`${selectedDate}T12:00:00`))}
+          {dots[selectedDate] ? ` · ${dots[selectedDate]} scheduled ${dots[selectedDate] === 1 ? "event" : "events"}` : " · No events scheduled"}
+        </p>
+      )}
     </Panel>
   );
 }
@@ -422,7 +436,7 @@ function ComingUp({ events, now }: { events: DashboardEvent[]; now: Date }) {
   const upcoming = events.slice(0, 2);
   return (
     <Panel>
-      <PanelHeading title="Coming Up" detail="Your next scheduled items" />
+      <PanelHeading title="Akan Datang" detail="Your next scheduled items" />
       {upcoming.length ? <div className="space-y-3">
         {upcoming.map((event) => {
           const days = Math.max(0, Math.ceil((new Date(event.date).getTime() - today.getTime()) / 86400000));
@@ -446,11 +460,11 @@ function ComingUp({ events, now }: { events: DashboardEvent[]; now: Date }) {
 
 function AnnouncementsPanel() {
   return (
-    <section className="relative overflow-hidden rounded-3xl bg-[#0a0a0a] p-5 text-white shadow-sm sm:p-6">
+    <section className="relative overflow-hidden rounded-3xl bg-[radial-gradient(ellipse_at_top_right,rgba(232,98,44,0.3),transparent_46%),#111827] p-5 text-white shadow-[0_16px_36px_rgba(17,24,39,0.18)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_20px_44px_rgba(17,24,39,0.22)] sm:p-6">
       <span className="flex size-9 items-center justify-center rounded-2xl bg-white/10 text-orange-300"><Bell size={17} /></span>
-      <span className="absolute right-5 top-5 flex size-9 items-center justify-center rounded-full bg-white text-[#0a0a0a]"><ArrowRight size={16} /></span>
-      <h2 className="mt-5 text-base font-semibold">Announcements</h2>
-      <p className="mt-1 max-w-xs text-xs leading-5 text-white/65">School announcements will appear here when they are published.</p>
+      <Link href="/dashboard/calendar" aria-label="View upcoming school events" className="absolute right-5 top-5 flex size-9 items-center justify-center rounded-full bg-white text-[#0a0a0a] transition hover:scale-105"><ArrowRight size={16} /></Link>
+      <h2 className="mt-5 text-base font-semibold">Promo Terbaik</h2>
+      <p className="mt-1 max-w-xs text-xs leading-5 text-white/65">Make important school dates easy to find in your calendar.</p>
     </section>
   );
 }
@@ -793,6 +807,32 @@ export function AdminDashboard({ initialSection = "overview" }: { initialSection
   const [monthKey, setMonthKey] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const notificationsRef = useRef<HTMLDivElement>(null);
+  const profileRef = useRef<HTMLDivElement>(null);
+  const prefersReducedMotion = useReducedMotion();
+
+  useEffect(() => {
+    function closeMenus(event: PointerEvent | KeyboardEvent) {
+      if (event instanceof KeyboardEvent && event.key === "Escape") {
+        setNotificationsOpen(false);
+        setProfileOpen(false);
+        setMenuOpen(false);
+        return;
+      }
+      if (event instanceof PointerEvent && event.target instanceof Node) {
+        if (!notificationsRef.current?.contains(event.target)) setNotificationsOpen(false);
+        if (!profileRef.current?.contains(event.target)) setProfileOpen(false);
+      }
+    }
+    document.addEventListener("pointerdown", closeMenus);
+    document.addEventListener("keydown", closeMenus);
+    return () => {
+      document.removeEventListener("pointerdown", closeMenus);
+      document.removeEventListener("keydown", closeMenus);
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -826,8 +866,8 @@ export function AdminDashboard({ initialSection = "overview" }: { initialSection
   const title = sectionTitles[section];
 
   return (
-    <main className="min-h-screen bg-[linear-gradient(135deg,#eaf2ff_0%,#f0edff_46%,#fff0e5_100%)] p-3 text-[#0a0a0a] sm:p-5 lg:p-8">
-      <div className="mx-auto min-h-[calc(100vh-1.5rem)] max-w-[1660px] rounded-[28px] border border-white/80 bg-white/35 p-3 shadow-[0_20px_80px_rgba(64,72,110,0.08)] backdrop-blur-sm sm:rounded-[36px] sm:p-5 lg:min-h-[calc(100vh-4rem)] lg:p-7">
+    <main className="min-h-screen bg-[#f2f4f7] p-3 text-[#0a0a0a] sm:p-5 lg:p-8">
+      <div className="mx-auto min-h-[calc(100vh-1.5rem)] max-w-[1660px] rounded-[28px] border border-white bg-white/65 p-3 shadow-[0_24px_80px_rgba(42,50,65,0.08)] backdrop-blur-xl sm:rounded-[36px] sm:p-5 lg:min-h-[calc(100vh-4rem)] lg:p-7">
         <header className="mb-6 flex min-w-0 flex-wrap items-center justify-between gap-3 sm:mb-8">
           <Link href="/dashboard" className="shrink-0 text-lg font-bold tracking-tight text-[#0a0a0a] sm:text-xl">EduManage</Link>
           <nav aria-label="Primary navigation" className="order-3 flex w-full min-w-0 max-w-full flex-none items-center justify-start gap-1 overflow-x-auto rounded-full border border-white bg-white/75 p-1 shadow-sm sm:order-none sm:w-auto sm:flex-1 sm:justify-center sm:gap-2 sm:px-2">
@@ -851,8 +891,24 @@ export function AdminDashboard({ initialSection = "overview" }: { initialSection
             })}
           </nav>
           <div className="flex shrink-0 items-center gap-2">
-            <button type="button" aria-label="Notifications" className="flex size-9 items-center justify-center rounded-full bg-white text-slate-600 shadow-sm hover:text-[#e8622c] sm:size-10"><Bell size={17} /></button>
-            <button type="button" aria-label="Administrator profile" className="flex size-9 items-center justify-center rounded-full bg-[#0a0a0a] text-xs font-semibold text-white sm:size-10"><UserRound size={17} /></button>
+            <div className="relative" ref={notificationsRef}>
+              <button type="button" aria-label="Notifications" aria-expanded={notificationsOpen} onClick={() => { setNotificationsOpen((open) => !open); setProfileOpen(false); }} className="relative flex size-9 items-center justify-center rounded-full border border-white bg-white text-slate-600 shadow-[0_5px_14px_rgba(30,41,59,0.08)] transition hover:-translate-y-0.5 hover:text-[#e8622c] sm:size-10">
+                <Bell size={17} />
+                {data.events.length > 0 && <span aria-label={`${data.events.length} upcoming notifications`} className="absolute right-1 top-1 size-2 rounded-full bg-[#e8622c] ring-2 ring-white" />}
+              </button>
+              {notificationsOpen && <motion.div initial={prefersReducedMotion ? false : { opacity: 0, y: 6, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: prefersReducedMotion ? 0 : 0.16 }} className="absolute right-0 top-12 z-30 w-[min(20rem,calc(100vw-2rem))] rounded-3xl border border-slate-100 bg-white p-4 shadow-[0_18px_55px_rgba(30,41,59,0.16)]">
+                <div className="mb-3 flex items-center justify-between"><h2 className="text-sm font-semibold">Notifications</h2><span className="text-[10px] text-slate-400">Upcoming</span></div>
+                {loading ? <p className="py-4 text-center text-xs text-slate-500">Loading latest events…</p> : data.events.length ? <div className="space-y-1">{data.events.slice(0, 4).map((event) => <Link key={event.id} href={event.kind === "exam" ? "/dashboard/examinations" : "/dashboard/fees"} onClick={() => setNotificationsOpen(false)} className="block rounded-2xl px-3 py-2.5 transition hover:bg-slate-50"><span className="block truncate text-xs font-semibold text-slate-800">{event.title}</span><span className="mt-1 block truncate text-[10px] text-slate-500">{eventTime(event)} · {event.detail}</span></Link>)}</div> : <p className="rounded-2xl bg-slate-50 px-3 py-4 text-center text-xs leading-5 text-slate-500">{error ? "Notifications are unavailable while the database is offline." : "No upcoming events to notify you about."}</p>}
+                <Link href="/dashboard/calendar" onClick={() => setNotificationsOpen(false)} className="mt-3 block rounded-xl bg-slate-50 px-3 py-2 text-center text-xs font-semibold text-slate-700 transition hover:bg-slate-100">Open school calendar</Link>
+              </motion.div>}
+            </div>
+            <div className="relative" ref={profileRef}>
+              <button type="button" aria-label="Administrator profile" aria-expanded={profileOpen} onClick={() => { setProfileOpen((open) => !open); setNotificationsOpen(false); }} className="flex size-9 items-center justify-center rounded-full bg-[#0a0a0a] text-xs font-semibold text-white shadow-[0_5px_14px_rgba(30,41,59,0.14)] transition hover:-translate-y-0.5 hover:bg-slate-800 sm:size-10"><UserRound size={17} /></button>
+              {profileOpen && <motion.div initial={prefersReducedMotion ? false : { opacity: 0, y: 6, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: prefersReducedMotion ? 0 : 0.16 }} className="absolute right-0 top-12 z-30 w-56 rounded-3xl border border-slate-100 bg-white p-3 shadow-[0_18px_55px_rgba(30,41,59,0.16)]">
+                <div className="mb-2 rounded-2xl bg-slate-50 px-3 py-3"><p className="text-xs font-semibold text-slate-900">Administrator</p><p className="mt-1 text-[10px] text-slate-500">School management</p></div>
+                {[["Dashboard overview", "/dashboard"], ["Manage students", "/dashboard/students"], ["Manage teachers", "/dashboard/teachers"]].map(([label, href]) => <Link key={href} href={href} onClick={() => setProfileOpen(false)} className="block rounded-xl px-3 py-2.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50">{label}</Link>)}
+              </motion.div>}
+            </div>
           </div>
         </header>
 
