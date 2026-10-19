@@ -1,0 +1,14 @@
+{
+  "css.lint.unknownAtRules": "ignore",
+  "less.lint.unknownAtRules": "ignore",
+  "scss.lint.unknownAtRules": "ignore",
+  // Tailwind CSS v4 introduces @theme, @utility, @custom-variant, etc.,
+  // which VS Code's built-in CSS language service does not recognize.
+  // Ignoring unknown at-rules prevents false "Unknown at rule @theme" warnings
+  // in edumanage/app/globals.css. Requires the Tailwind CSS IntelliSense
+  // extension for proper @theme IntelliSense instead.
+  "css.customData": [],
+  "editor.quickSuggestions": {
+    "strings": true
+  }
+}
