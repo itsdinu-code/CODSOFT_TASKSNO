@@ -104,6 +104,8 @@ DB_POOL_MIN="2"
 DB_POOL_MAX_USES="7500"
 ```
 
+The complete connection-string format is `postgresql://USERNAME:PASSWORD@localhost:5432/edumanage`; replace `USERNAME` and `PASSWORD` with your PostgreSQL credentials and URL-encode special characters in the password.
+
 Replace `USERNAME` and `PASSWORD` with real PostgreSQL credentials. URL-encode special characters in the password. Do not commit `.env` or expose `DATABASE_URL` in client-side code.
 
 ### 3. Prepare the database
@@ -242,7 +244,56 @@ public/
 
 - Keep `.env` local and untracked.
 - Use a unique, high-entropy `AUTH_SECRET` in production.
-- Use HTTPS and a 
+- Use HTTPS and set secure cookies in production.
+- Never log or return passwords, password hashes, `DATABASE_URL`, or session tokens.
+
+### Password hashing verification
+
+EduManage never stores a plain-text password. During registration:
+
+1. The server generates a cryptographically random 16-byte salt.
+2. Node.js `scrypt` derives a 64-byte password hash using `N=16384`, `r=8`, and `p=1`.
+3. The database stores only `scrypt$<salt-hex>$<hash-hex>` in `User.passwordHash`.
+4. During login, the entered password is hashed with the stored salt and compared with `timingSafeEqual`.
+
+To verify this behavior manually, register a test account, inspect the `User` row in Prisma Studio, and confirm that `passwordHash` starts with `scrypt$`, is not equal to the submitted password, and differs for two accounts with the same password because each hash has a different salt. Do not copy real credentials into logs or screenshots.
+
+### Authentication verification
+
+- `POST /api/auth/register` and `POST /api/auth/login` validate input before database access.
+- Successful authentication creates a signed HMAC-SHA256 session token with a 12-hour expiry.
+- The token is sent as the `edumanage-session` cookie with `HttpOnly`, `SameSite=Lax`, and `Secure` in production.
+- Protected pages and data APIs call `requireSession`; missing, malformed, expired, or tampered cookies receive `401 Unauthorized`.
+- `POST /api/auth/logout` clears the session cookie.
+
+To verify authentication, sign in and open `/dashboard`, then sign out and retry the dashboard or a protected API request. The first request should succeed and the second should be rejected with `401`.
+
+### Server-side validation verification
+
+Authentication and data route handlers parse request bodies on the server with Zod schemas. Validation includes trimmed and normalized email addresses, password length and complexity, confirmation-password matching, field length limits, enum values, numeric ranges, dates, and relational IDs. Invalid JSON or invalid fields return a `400` response (or the route-specific validation status) without writing to PostgreSQL. Client-side form validation is only a convenience and is not a security boundary.
+
+Test this by sending an invalid request directly to an API with browser developer tools or `curl`; changing or bypassing the form must not bypass the server response validation.
+
+### Database error handling verification
+
+- Missing `DATABASE_URL` or `AUTH_SECRET` produces an explicit service-unavailable response instead of a success-shaped fallback.
+- Duplicate registration emails map Prisma error `P2002` to `409 Conflict`.
+- Authentication and data-route database failures are logged server-side with `console.error` and return a safe `503` message without exposing SQL, credentials, or stack traces.
+- PostgreSQL pooling uses bounded connections, a five-second connection timeout, idle cleanup, and connection reuse limits.
+- Loading, route-error, and global-error UI states provide recovery actions when requests fail.
+
+For a local failure test, temporarily stop PostgreSQL or use an invalid local `DATABASE_URL`, restart the app, and confirm that the UI shows an actionable error while the response does not disclose connection details.
+
+## Screenshots
+
+Run `npm run dev` and open these pages in a browser to review the application screens:
+
+- [Landing page](http://localhost:3000/)
+- [Login page](http://localhost:3000/login)
+- [Registration page](http://localhost:3000/register)
+- [Protected dashboard](http://localhost:3000/dashboard)
+
+The dashboard requires a configured database and an authenticated session. Capture screenshots only after removing personal or seed data that should not be shared.
 
 ## Validation
 
