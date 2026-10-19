@@ -1,3 +1,4 @@
+import { requireSession } from "../../lib/auth";
 import { randomUUID } from "node:crypto";
 import { getPrismaClient } from "../../lib/prisma";
 import {
@@ -16,7 +17,9 @@ const feeInclude = {
   payments: { orderBy: { paidAt: "desc" as const } },
 };
 
-export async function GET() {
+export async function GET(request: Request) {
+  const session = requireSession(request);
+  if (session instanceof Response) return session;
   if (!process.env.DATABASE_URL) return databaseUnavailable();
   try {
     const data = await getPrismaClient().feeInvoice.findMany({
@@ -31,6 +34,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const session = requireSession(request);
+  if (session instanceof Response) return session;
   if (!process.env.DATABASE_URL) return databaseUnavailable();
   const body = await readJson(request);
   if (body instanceof Response) return body;

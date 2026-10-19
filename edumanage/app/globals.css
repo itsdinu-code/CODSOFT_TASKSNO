@@ -2,23 +2,23 @@
 
 :root {
   color-scheme: light;
-  --background: #f6f7f5;
+  --background: #f3f7f3;
   --foreground: #1a1f1c;
-  --primary: #1f3d2f;
-  --accent: #e5b85c;
+  --primary: #173528;
+  --accent: #2f6b4a;
   --surface: #fff;
   --border: #e6e8e4;
-  --muted: #5b645e;
-  --success: #256a42;
+  --muted: #46514b;
+  --success: #1c5c38;
   --success-bg: #eaf5ed;
-  --info: #2459a6;
+  --info: #1d4f9c;
   --info-bg: #edf4ff;
-  --warning: #815800;
+  --warning: #6b4a00;
   --warning-bg: #fff5dd;
-  --inactive: #59615c;
+  --inactive: #4b544e;
   --inactive-bg: #eff1ef;
-  --school-card-shadow: 0 1px 2px rgb(26 31 28 / 5%);
-  --school-card-shadow-hover: 0 4px 12px rgb(26 31 28 / 10%);
+  --school-card-shadow: 0 10px 30px rgb(23 53 40 / 7%);
+  --school-card-shadow-hover: 0 16px 40px rgb(23 53 40 / 12%);
   --school-ease: cubic-bezier(0.2, 0.75, 0.25, 1);
 }
 
@@ -30,7 +30,7 @@
   --color-surface: var(--surface);
   --color-border: var(--border);
   --color-muted: var(--muted);
-  --font-sans: var(--font-inter);
+  --font-sans: var(--font-jakarta), "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
 }
 
 html {
@@ -43,7 +43,7 @@ body {
   min-height: 100vh;
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-inter), Arial, Helvetica, sans-serif;
+  font-family: var(--font-jakarta), "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   animation: dashboard-appear 380ms ease-out both;
 }
 
@@ -86,15 +86,30 @@ textarea {
   background: transparent;
 }
 
+.dashboard-glass {
+  background: rgb(255 255 255 / 68%);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+  border: 1px solid rgb(255 255 255 / 70%);
+  box-shadow: 0 24px 60px rgb(60 72 140 / 12%);
+}
+
+.dashboard-card {
+  border: 1px solid rgb(255 255 255 / 60%);
+  background: var(--surface);
+  box-shadow: var(--school-card-shadow);
+  transition: box-shadow 150ms ease, border-color 150ms ease, transform 150ms ease;
+}
+
 .route-transition {
   animation: dashboard-appear 220ms ease-out both;
 }
 
 .dashboard-card {
-  border-color: var(--border);
+  border: 1px solid rgb(255 255 255 / 60%);
   background: var(--surface);
   box-shadow: var(--school-card-shadow);
-  transition: box-shadow 150ms ease, border-color 150ms ease;
+  transition: box-shadow 150ms ease, border-color 150ms ease, transform 150ms ease;
 }
 
 .dashboard-card-primary {
@@ -221,9 +236,9 @@ a:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 3px solid #0b5fff;
   outline-offset: 2px;
-  box-shadow: 0 0 0 4px var(--primary);
+  box-shadow: 0 0 0 5px rgb(255 255 255 / 90%);
 }
 
 button:disabled,

@@ -1,3 +1,4 @@
+import { requireSession } from "../../../lib/auth";
 import { getPrismaClient } from "../../../lib/prisma";
 import {
   databaseUnavailable,
@@ -6,6 +7,7 @@ import {
   isOneOf,
   optionalText,
   readJson,
+  validId,
   validAmount,
 } from "../../../lib/academic-api";
 
@@ -19,6 +21,8 @@ function invoiceStatus(amount: number, paid: number, dueDate: Date) {
 }
 
 export async function PATCH(request: Request, { params }: RouteContext) {
+  const session = requireSession(request);
+  if (session instanceof Response) return session;
   if (!process.env.DATABASE_URL) return databaseUnavailable();
   const body = await readJson(request);
   if (body instanceof Response) return body;
@@ -41,7 +45,9 @@ export async function PATCH(request: Request, { params }: RouteContext) {
 
   try {
     const prisma = getPrismaClient();
-    const { id } = await params;
+    const { id: rawId } = await params;
+    const id = validId(rawId);
+    if (!id) return Response.json({ error: "Invalid record id." }, { status: 400 });
     const current = await prisma.feePayment.findUnique({
       where: { id },
       select: {
@@ -70,11 +76,15 @@ export async function PATCH(request: Request, { params }: RouteContext) {
   }
 }
 
-export async function DELETE(_request: Request, { params }: RouteContext) {
+export async function DELETE(request: Request, { params }: RouteContext) {
+  const session = requireSession(request);
+  if (session instanceof Response) return session;
   if (!process.env.DATABASE_URL) return databaseUnavailable();
   try {
     const prisma = getPrismaClient();
-    const { id } = await params;
+    const { id: rawId } = await params;
+    const id = validId(rawId);
+    if (!id) return Response.json({ error: "Invalid record id." }, { status: 400 });
     const payment = await prisma.feePayment.findUnique({
       where: { id },
       select: { invoiceId: true, invoice: { select: { amount: true, dueDate: true, payments: { select: { id: true, amount: true } } } } },

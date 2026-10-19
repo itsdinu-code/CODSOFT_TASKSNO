@@ -1,18 +1,23 @@
+import { requireSession } from "../../../lib/auth";
 import { Prisma } from "../../../../generated/prisma/client";
 import { getPrismaClient } from "../../../lib/prisma";
-import { databaseUnavailable, handlePrismaError, readJson } from "../../../lib/academic-api";
-import { teacherPayload } from "../route";
+import { teacherPayload } from "../../../lib/teacher-payload";
+import { databaseUnavailable, handlePrismaError, readJson, validId } from "../../../lib/academic-api";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
 export async function PATCH(request: Request, { params }: RouteContext) {
+  const session = requireSession(request);
+  if (session instanceof Response) return session;
   if (!process.env.DATABASE_URL) return databaseUnavailable();
   const body = await readJson(request);
   if (body instanceof Response) return body;
   const parsed = teacherPayload(body);
   if ("error" in parsed) return Response.json({ error: parsed.error }, { status: 400 });
   try {
-    const { id } = await params;
+    const { id: rawId } = await params;
+    const id = validId(rawId);
+    if (!id) return Response.json({ error: "Invalid record id." }, { status: 400 });
     const teacher = parsed.data;
     const data = await getPrismaClient().teacher.update({
       where: { id },
@@ -28,10 +33,14 @@ export async function PATCH(request: Request, { params }: RouteContext) {
   }
 }
 
-export async function DELETE(_request: Request, { params }: RouteContext) {
+export async function DELETE(request: Request, { params }: RouteContext) {
+  const session = requireSession(request);
+  if (session instanceof Response) return session;
   if (!process.env.DATABASE_URL) return databaseUnavailable();
   try {
-    const { id } = await params;
+    const { id: rawId } = await params;
+    const id = validId(rawId);
+    if (!id) return Response.json({ error: "Invalid record id." }, { status: 400 });
     await getPrismaClient().teacher.delete({ where: { id } });
     return Response.json({ data: { id }, source: "database" });
   } catch (error) {

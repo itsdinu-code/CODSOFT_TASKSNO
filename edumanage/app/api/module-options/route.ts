@@ -1,7 +1,10 @@
+import { requireSession } from "../../lib/auth";
 import { getPrismaClient } from "../../lib/prisma";
 import { databaseUnavailable, handlePrismaError } from "../../lib/academic-api";
 
-export async function GET() {
+export async function GET(request: Request) {
+  const session = requireSession(request);
+  if (session instanceof Response) return session;
   if (!process.env.DATABASE_URL) return databaseUnavailable();
   try {
     const prisma = getPrismaClient();

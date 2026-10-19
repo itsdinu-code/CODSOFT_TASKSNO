@@ -1,6 +1,7 @@
+import { requireSession } from "../../../lib/auth";
 import { Prisma, type StudentStatus as PrismaStudentStatus } from "../../../../generated/prisma/client";
 import { getPrismaClient } from "../../../lib/prisma";
-import { databaseUnavailable, handlePrismaError, readJson } from "../../../lib/academic-api";
+import { databaseUnavailable, handlePrismaError, readJson, validEmail, validId } from "../../../lib/academic-api";
 
 const statuses = ["ACTIVE", "ON_LEAVE", "PENDING", "GRADUATED"] as const;
 type RouteContext = { params: Promise<{ id: string }> };
@@ -14,7 +15,8 @@ function parseStudent(body: Record<string, unknown>) {
   const status = body.status === undefined ? "ACTIVE" : body.status;
 
   if (parts.length < 2 || name.length > 100) return { error: "Enter the student’s first and last name." };
-  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  const cleanEmail = validEmail(email);
+  if (!cleanEmail) {
     return { error: "Enter a valid email address." };
   }
   if (!classMatch || Number(classMatch[1]) < 1 || Number(classMatch[1]) > 12) {
@@ -26,7 +28,7 @@ function parseStudent(body: Record<string, unknown>) {
     data: {
       firstName: parts[0],
       lastName: parts.slice(1).join(" "),
-      email,
+      email: cleanEmail,
       grade: Number(classMatch[1]),
       section: classMatch[2].toUpperCase(),
       status: status as PrismaStudentStatus,
@@ -35,6 +37,8 @@ function parseStudent(body: Record<string, unknown>) {
 }
 
 export async function PATCH(request: Request, { params }: RouteContext) {
+  const session = requireSession(request);
+  if (session instanceof Response) return session;
   if (!process.env.DATABASE_URL) return databaseUnavailable();
   const body = await readJson(request);
   if (body instanceof Response) return body;
@@ -42,7 +46,9 @@ export async function PATCH(request: Request, { params }: RouteContext) {
   if ("error" in parsed) return Response.json({ error: parsed.error }, { status: 400 });
 
   try {
-    const { id } = await params;
+    const { id: rawId } = await params;
+    const id = validId(rawId);
+    if (!id) return Response.json({ error: "Invalid record id." }, { status: 400 });
     const prisma = getPrismaClient();
     const student = parsed.data;
     const result = await prisma.$transaction(async (tx) => {
@@ -90,10 +96,14 @@ export async function PATCH(request: Request, { params }: RouteContext) {
   }
 }
 
-export async function DELETE(_request: Request, { params }: RouteContext) {
+export async function DELETE(request: Request, { params }: RouteContext) {
+  const session = requireSession(request);
+  if (session instanceof Response) return session;
   if (!process.env.DATABASE_URL) return databaseUnavailable();
   try {
-    const { id } = await params;
+    const { id: rawId } = await params;
+    const id = validId(rawId);
+    if (!id) return Response.json({ error: "Invalid record id." }, { status: 400 });
     await getPrismaClient().student.delete({ where: { id } });
     return Response.json({ data: { id }, source: "database" });
   } catch (error) {

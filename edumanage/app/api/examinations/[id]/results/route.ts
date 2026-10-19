@@ -1,3 +1,4 @@
+import { requireSession } from "../../../../lib/auth";
 import { getPrismaClient } from "../../../../lib/prisma";
 import {
   databaseUnavailable,
@@ -12,6 +13,8 @@ import {
 type RouteContext = { params: Promise<{ id: string }> };
 
 export async function POST(request: Request, { params }: RouteContext) {
+  const session = requireSession(request);
+  if (session instanceof Response) return session;
   if (!process.env.DATABASE_URL) return databaseUnavailable();
   const body = await readJson(request);
   if (body instanceof Response) return body;

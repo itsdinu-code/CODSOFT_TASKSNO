@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { Prisma, type StudentStatus as PrismaStudentStatus } from "../../../generated/prisma/client";
 import type { Student, StudentStatus } from "../../data";
+import { requireSession } from "../../lib/auth";
 import { getPrismaClient } from "../../lib/prisma";
+import { validEmail } from "../../lib/academic-api";
 
 const avatarColors = [
   "bg-violet-100 text-violet-700",
@@ -65,7 +67,9 @@ function databaseUnavailable() {
   );
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const session = requireSession(request);
+  if (session instanceof Response) return session;
   if (!process.env.DATABASE_URL) {
     return databaseUnavailable();
   }
@@ -125,6 +129,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const session = requireSession(request);
+  if (session instanceof Response) return session;
   if (!process.env.DATABASE_URL) {
     return databaseUnavailable();
   }
@@ -150,7 +156,8 @@ export async function POST(request: Request) {
   if (name.length < 2 || name.length > 100 || nameParts.length < 2) {
     return Response.json({ error: "Enter the student’s first and last name." }, { status: 400 });
   }
-  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  const cleanEmail = validEmail(email);
+  if (!cleanEmail) {
     return Response.json({ error: "Enter a valid email address." }, { status: 400 });
   }
   if (!classMatch) {
@@ -160,6 +167,9 @@ export async function POST(request: Request) {
   const [firstName, ...lastNameParts] = nameParts;
   const lastName = lastNameParts.join(" ");
   const grade = Number(classMatch[1]);
+  if (!Number.isInteger(grade) || grade < 1 || grade > 12) {
+    return Response.json({ error: "Choose a valid grade and section." }, { status: 400 });
+  }
   const section = classMatch[2].toUpperCase();
   const academicYear = "2025-2026";
 
@@ -176,7 +186,7 @@ export async function POST(request: Request) {
         admissionNumber: `ADM-${randomUUID()}`,
         firstName,
         lastName,
-        email,
+        email: cleanEmail,
         classroomId: classroom.id,
         status: "ACTIVE",
       },

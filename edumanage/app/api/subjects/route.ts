@@ -1,3 +1,4 @@
+import { requireSession } from "../../lib/auth";
 import { Prisma } from "../../../generated/prisma/client";
 import { getPrismaClient } from "../../lib/prisma";
 import {
@@ -10,6 +11,8 @@ import {
 } from "../../lib/academic-api";
 
 export async function POST(request: Request) {
+  const session = requireSession(request);
+  if (session instanceof Response) return session;
   if (!process.env.DATABASE_URL) return databaseUnavailable();
   const body = await readJson(request);
   if (body instanceof Response) return body;

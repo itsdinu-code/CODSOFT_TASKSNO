@@ -1,3 +1,4 @@
+import { requireSession } from "../../lib/auth";
 import { Prisma } from "../../../generated/prisma/client";
 import { connection } from "next/server";
 import { getPrismaClient } from "../../lib/prisma";
@@ -5,7 +6,15 @@ import { databaseUnavailable, handlePrismaError } from "../../lib/academic-api";
 
 const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
+function pctChange(current: number, previous: number): number | null {
+  if (!Number.isFinite(current) || !Number.isFinite(previous)) return null;
+  if (previous === 0) return current > 0 ? 100 : null;
+  return ((current - previous) / Math.abs(previous)) * 100;
+}
+
 export async function GET(request: Request) {
+  const session = requireSession(request);
+  if (session instanceof Response) return session;
   await connection();
   if (!process.env.DATABASE_URL) return databaseUnavailable();
 
@@ -27,6 +36,8 @@ export async function GET(request: Request) {
     }
     const monthStart = new Date(Date.UTC(requestedYear, requestedMonth - 1, 1));
     const nextMonth = new Date(Date.UTC(requestedYear, requestedMonth, 1));
+    const thisMonthStartLocal = new Date(now.getFullYear(), now.getMonth(), 1);
+    const prevMonthStartLocal = new Date(now.getFullYear(), now.getMonth() - 1, 1);
 
     const [
       studentCount,
@@ -38,6 +49,12 @@ export async function GET(request: Request) {
       dueFees,
       exams,
       invoices,
+      studentsPrevMonth,
+      teachersPrevMonth,
+      attendanceThisMonth,
+      attendancePrevMonth,
+      studentsThisMonth,
+      teachersThisMonth,
     ] = await Promise.all([
       prisma.student.count(),
       prisma.teacher.count(),
@@ -114,6 +131,20 @@ export async function GET(request: Request) {
           payments: { select: { amount: true } },
         },
       }),
+      prisma.student.count({
+        where: { enrollmentDate: { gte: prevMonthStartLocal, lt: thisMonthStartLocal } },
+      }),
+      prisma.teacher.count({
+        where: { hireDate: { gte: prevMonthStartLocal, lt: thisMonthStartLocal } },
+      }),
+      prisma.attendance.count({
+        where: { createdAt: { gte: thisMonthStartLocal } },
+      }),
+      prisma.attendance.count({
+        where: { createdAt: { gte: prevMonthStartLocal, lt: thisMonthStartLocal } },
+      }),
+      prisma.student.count({ where: { enrollmentDate: { gte: thisMonthStartLocal } } }),
+      prisma.teacher.count({ where: { hireDate: { gte: thisMonthStartLocal } } }),
     ]);
 
     const markedAttendance = attendanceGroups.reduce((total, group) => total + group._count._all, 0);
@@ -161,6 +192,13 @@ export async function GET(request: Request) {
       return days;
     }, {});
 
+    const trends = {
+      students: pctChange(studentsThisMonth, studentsPrevMonth),
+      teachers: pctChange(teachersThisMonth, teachersPrevMonth),
+      attendance: pctChange(attendanceThisMonth, attendancePrevMonth),
+      dueFees: null,
+    };
+
     return Response.json({
       data: {
         generatedAt: now.toISOString(),
@@ -171,6 +209,7 @@ export async function GET(request: Request) {
           attendance: markedAttendance ? (attended / markedAttendance) * 100 : null,
           dueFees: outstanding,
         },
+        trends,
         revenue,
         teachers,
         events: events.slice(0, 100),

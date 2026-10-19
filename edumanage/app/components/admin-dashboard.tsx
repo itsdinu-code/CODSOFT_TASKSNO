@@ -1,46 +1,47 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { animate, motion, useMotionValue, useReducedMotion, useTransform } from "motion/react";
 import {
   Activity,
   ArrowRight,
-  ArrowUpRight,
   Bell,
   BookOpen,
   CalendarDays,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   CircleDollarSign,
+  ClipboardCheck,
   GraduationCap,
   Home,
   MoreHorizontal,
   Pencil,
   Plus,
   Trash2,
+  TrendingDown,
+  TrendingUp,
   Users,
   UserRound,
   Wallet,
 } from "lucide-react";
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-} from "recharts";
 import { SchoolModule } from "./school-module";
 import { ConfirmDialog, RecordControls } from "./record-controls";
+
+const RevenueChart = dynamic(() => import("./revenue-chart").then((m) => m.RevenueChart), {
+  ssr: false,
+  loading: () => <div className="h-57.5 w-full animate-pulse rounded-2xl bg-slate-100" aria-label="Loading revenue chart" />,
+});
 
 type Section = "overview" | "students" | "teachers" | "attendance" | "examinations" | "fees" | "academic-records" | "calendar";
 type OverviewResponse = {
   generatedAt: string;
   calendarMonth: string;
   metrics: { students: number; teachers: number; attendance: number | null; dueFees: number };
+  trends?: { students: number | null; teachers: number | null; attendance: number | null; dueFees: number | null };
   revenue: { month: string; invoiced: number; collected: number }[];
   teachers: Teacher[];
   events: DashboardEvent[];
@@ -76,10 +77,10 @@ type Student = {
 
 const navItems: { label: string; href: string; section: Section; icon: typeof Home }[] = [
   { label: "Home", href: "/dashboard", section: "overview", icon: Home },
-  { label: "Students", href: "/dashboard/students", section: "students", icon: Users },
-  { label: "Teachers", href: "/dashboard/teachers", section: "teachers", icon: GraduationCap },
-  { label: "Attendance", href: "/dashboard/attendance", section: "attendance", icon: Activity },
-  { label: "Exams / Fees", href: "/dashboard/examinations", section: "examinations", icon: BookOpen },
+  { label: "Students", href: "/dashboard/students", section: "students", icon: GraduationCap },
+  { label: "Teachers", href: "/dashboard/teachers", section: "teachers", icon: Users },
+  { label: "Attendance", href: "/dashboard/attendance", section: "attendance", icon: ClipboardCheck },
+  { label: "Fees", href: "/dashboard/fees", section: "fees", icon: Wallet },
   { label: "Calendar", href: "/dashboard/calendar", section: "calendar", icon: CalendarDays },
 ];
 
@@ -95,16 +96,17 @@ const sectionTitles: Record<Section, string> = {
 };
 
 const pastelCards = [
-  { label: "Total Students", key: "students", icon: Users, className: "bg-white", iconClassName: "bg-[#eee9ff] text-[#704fd6]", decor: "text-[#704fd6]" },
-  { label: "Total Teachers", key: "teachers", icon: GraduationCap, className: "bg-white", iconClassName: "bg-[#e4f2ff] text-[#397fb5]", decor: "text-[#397fb5]" },
-  { label: "Avg Attendance", key: "attendance", icon: Activity, className: "bg-white", iconClassName: "bg-[#e5f3e9] text-[#448a5b]", decor: "text-[#448a5b]" },
-  { label: "Due Fees", key: "dueFees", icon: Wallet, className: "bg-white", iconClassName: "bg-[#fff0e4] text-[#e8622c]", decor: "text-[#e8622c]" },
+  { label: "Total Students", key: "students", icon: GraduationCap, cardClass: "bg-[#ece9ff]", iconClassName: "bg-white text-[#704fd6]", decorIcon: BookOpen },
+  { label: "Teaching Staff", key: "teachers", icon: Users, cardClass: "bg-[#e3f1ff]", iconClassName: "bg-white text-[#397fb5]", decorIcon: GraduationCap },
+  { label: "Avg Attendance", key: "attendance", icon: ClipboardCheck, cardClass: "bg-[#e2f4e7]", iconClassName: "bg-white text-[#448a5b]", decorIcon: Users },
+  { label: "Due Fees", key: "dueFees", icon: Wallet, cardClass: "bg-[#ffeedd]", iconClassName: "bg-white text-[#e8622c]", decorIcon: Wallet },
 ] as const;
 
 const fallbackOverview: OverviewResponse = {
   generatedAt: "",
   calendarMonth: "",
   metrics: { students: 0, teachers: 0, attendance: null, dueFees: 0 },
+  trends: { students: null, teachers: null, attendance: null, dueFees: null },
   revenue: [],
   teachers: [],
   events: [],
@@ -139,7 +141,7 @@ function initials(firstName: string, lastName: string) {
 }
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init);
+  const response = await fetch(url, { credentials: "same-origin", ...init });
   let result: unknown;
   try {
     result = await response.json();
@@ -190,17 +192,19 @@ function MetricCard({
   item,
   value,
   target,
+  trend,
   detail,
   index,
 }: {
   item: (typeof pastelCards)[number];
   value: string;
   target: number | null;
+  trend: number | null;
   detail: string;
   index: number;
 }) {
   const Icon = item.icon;
-  const Decor = item.icon;
+  const Decor = item.decorIcon;
   const prefersReducedMotion = useReducedMotion();
   const count = useMotionValue(prefersReducedMotion || target === null ? target ?? 0 : 0);
   const displayValue = useTransform(count, (current) => {
@@ -225,74 +229,50 @@ function MetricCard({
       initial={prefersReducedMotion ? false : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: prefersReducedMotion ? 0 : 0.24, delay: prefersReducedMotion ? 0 : index * 0.035, ease: "easeOut" }}
-      className={`dashboard-card relative isolate flex min-h-[170px] flex-col overflow-hidden rounded-3xl border border-white/90 p-5 shadow-[0_10px_30px_rgba(36,48,60,0.055)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(36,48,60,0.09)] ${item.className}`}
+      className={`relative isolate flex min-h-44.5 flex-col overflow-hidden rounded-2xl p-5 shadow-[0_10px_30px_rgba(36,48,60,0.07)] transition duration-200 hover:-translate-y-0.5 ${item.cardClass}`}
     >
-      <span className={`flex size-10 items-center justify-center rounded-2xl shadow-sm ${item.iconClassName}`}>
+      <span className={`flex size-10 items-center justify-center rounded-xl bg-white shadow-sm ${item.iconClassName}`}>
         <Icon size={19} strokeWidth={1.8} aria-hidden="true" />
       </span>
       <p className="mt-4 text-xs font-medium text-slate-600">{item.label}</p>
-      <p className="mt-1 text-3xl font-semibold tracking-tight text-[#0a0a0a]"><motion.span>{displayValue}</motion.span></p>
-      <span className="mt-auto inline-flex w-fit items-center gap-1.5 rounded-full bg-[#0a0a0a] px-3 py-1.5 text-[10px] font-medium text-white">
-        {detail !== "Live database total" && detail !== "No attendance marked"
-          ? <ArrowUpRight size={12} className="text-emerald-300" aria-hidden="true" />
-          : <Activity size={12} className="text-orange-300" aria-hidden="true" />}
-        {detail}
+      <p className="mt-1 text-3xl font-bold tracking-tight text-[#0a0a0a]"><motion.span>{displayValue}</motion.span></p>
+      <span className="mt-3 inline-flex w-fit items-center gap-1.5 rounded-full bg-black px-3 py-1.5 text-[10px] font-semibold text-white">
+        {trend === null || trend === undefined ? (
+          <Activity size={12} className="text-orange-300" aria-hidden="true" />
+        ) : trend >= 0 ? (
+          <TrendingUp size={12} className="text-emerald-300" aria-hidden="true" />
+        ) : (
+          <TrendingDown size={12} className="text-orange-300" aria-hidden="true" />
+        )}
+        {trend === null || trend === undefined ? detail : `${trend >= 0 ? "+" : ""}${trend.toFixed(0)}% · This Month`}
       </span>
-      <Decor className={`pointer-events-none absolute -bottom-3 -right-3 -z-10 size-24 opacity-[0.08]`} aria-hidden="true" />
+      <Decor size={96} className="pointer-events-none absolute -bottom-3 -right-3 text-black opacity-10" aria-hidden="true" />
     </motion.article>
   );
 }
 
 function RevenuePanel({ data, loading, error }: { data: OverviewResponse; loading: boolean; error: string }) {
-  const prefersReducedMotion = useReducedMotion();
   const total = data.revenue.reduce((sum, month) => sum + month.invoiced, 0);
   const collected = data.revenue.reduce((sum, month) => sum + month.collected, 0);
   if (loading) return <LoadingPanel title="Revenue Statistic" />;
   if (error) return <Panel><PanelHeading title="Revenue Statistic" /><ErrorText error={error} /></Panel>;
   return (
-    <Panel className="min-h-[330px]">
+    <Panel className="min-h-82.5">
       <PanelHeading
         title="Revenue Statistic"
-        detail={`Invoice and payment totals · ${data.generatedAt ? new Date(data.generatedAt).getFullYear() : "—"}`}
         action={
-          <div className="shrink-0 rounded-2xl bg-[#0a0a0a] px-3 py-2 text-white">
-            <p className="text-[9px] text-white/60">Total Fee · Collected</p>
-            <p className="mt-0.5 text-xs font-semibold">{formatMoney(total, true)} · {formatMoney(collected, true)}</p>
+          <div className="shrink-0 rounded-xl bg-black px-3.5 py-2 text-[10px] font-medium text-white">
+            <span className="mr-1.5 inline-block size-1.5 rounded-full bg-white/50" />Total Fee: {formatMoney(total, true)}
+            <span className="mx-2 text-white/30">|</span>
+            <span className="mr-1.5 inline-block size-1.5 rounded-full bg-[#e8622c]" />Collected: {formatMoney(collected, true)}
           </div>
         }
       />
       {data.revenue.length === 0 ? (
         <EmptyState message="No invoice or payment activity recorded for this year." />
       ) : (
-        <div className="h-[230px] w-full" aria-label="Monthly fee and payment totals">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={data.revenue} margin={{ top: 12, right: 12, left: 0, bottom: 0 }}>
-              <defs>
-                <linearGradient id="revenue-area-gradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#e8622c" stopOpacity={0.2} />
-                  <stop offset="95%" stopColor="#e8622c" stopOpacity={0.015} />
-                </linearGradient>
-                <linearGradient id="collected-area-gradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#f5b16f" stopOpacity={0.13} />
-                  <stop offset="95%" stopColor="#f5b16f" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid vertical={false} stroke="#d9dde4" strokeDasharray="4 6" />
-              <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: "#8b909b", fontSize: 11 }} />
-              <Tooltip
-                formatter={(value, name) => [formatMoney(Number(value)), name === "invoiced" ? "Total fee" : "Collected"]}
-                contentStyle={{ borderRadius: 14, border: "1px solid #eef0f3", fontSize: 12 }}
-              />
-              <Area dataKey="invoiced" type="monotone" stroke="#e8622c" strokeWidth={3} fill="url(#revenue-area-gradient)" dot={false} activeDot={{ r: 4 }} isAnimationActive={!prefersReducedMotion} animationDuration={280} />
-              <Area dataKey="collected" type="monotone" stroke="#f5b16f" strokeWidth={2} fill="url(#collected-area-gradient)" dot={false} activeDot={{ r: 3 }} isAnimationActive={!prefersReducedMotion} animationDuration={280} />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
+        <RevenueChart data={data.revenue} />
       )}
-      <div className="mt-1 flex flex-wrap items-center gap-4 text-[10px] text-slate-500">
-        <span className="inline-flex items-center gap-1.5"><i className="size-2 rounded-full bg-[#e8622c]" />Invoiced</span>
-        <span className="inline-flex items-center gap-1.5"><i className="size-2 rounded-full bg-[#f5b16f]" />Collected</span>
-      </div>
     </Panel>
   );
 }
@@ -310,10 +290,10 @@ function TeacherPanel({ teachers, loading, error }: { teachers: Teacher[]; loadi
   if (loading) return <LoadingPanel title="Top Teachers" />;
   return (
     <Panel className="h-full">
-      <PanelHeading title="Top Teachers" detail="Active staff from your directory" action={<button type="button" aria-label="Teacher list options" className="rounded-xl p-2 text-slate-500 hover:bg-slate-100"><MoreHorizontal size={18} /></button>} />
+      <PanelHeading title="Top Teachers" action={<button type="button" aria-label="Teacher list options" className="rounded-full p-2 text-slate-500 hover:bg-slate-100"><MoreHorizontal size={18} /></button>} />
       {error ? <ErrorText error={error} /> : teachers.length ? (
-        <div className="space-y-3">
-          {teachers.slice(0, 6).map((teacher, index) => (
+        <div className="space-y-4">
+          {teachers.slice(0, 3).map((teacher, index) => (
             <motion.div
               key={teacher.id}
               initial={prefersReducedMotion ? false : { opacity: 0, y: 5 }}
@@ -321,14 +301,14 @@ function TeacherPanel({ teachers, loading, error }: { teachers: Teacher[]; loadi
               transition={{ duration: prefersReducedMotion ? 0 : 0.2, delay: prefersReducedMotion ? 0 : index * 0.02, ease: "easeOut" }}
               className="flex min-w-0 items-center gap-3"
             >
-              <span className={`flex size-9 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ${["bg-violet-100 text-violet-700", "bg-sky-100 text-sky-700", "bg-emerald-100 text-emerald-700", "bg-orange-100 text-orange-700", "bg-rose-100 text-rose-700", "bg-indigo-100 text-indigo-700"][index]}`}>
+              <span className={`flex size-9 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ${["bg-violet-100 text-violet-700", "bg-sky-100 text-sky-700", "bg-emerald-100 text-emerald-700"][index % 3]}`}>
                 {initials(teacher.firstName, teacher.lastName)}
               </span>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-xs font-semibold text-[#171717]">{teacher.firstName} {teacher.lastName}</p>
                 <p className="truncate text-[10px] text-slate-500">{teacher.email}</p>
               </div>
-              <span className="max-w-24 truncate rounded-full bg-slate-100 px-2.5 py-1 text-[9px] text-slate-600">
+              <span className="max-w-24 shrink-0 truncate rounded-full bg-slate-100 px-2.5 py-1 text-[9px] font-medium text-slate-600">
                 {teacher.assignments[0]?.subject.name ?? teacher.designation ?? "Unassigned"}
               </span>
             </motion.div>
@@ -343,16 +323,22 @@ function eventTime(event: DashboardEvent) {
   return formatDate(event.date, { weekday: "short", day: "numeric", month: "short" });
 }
 
+function eventTimeLabel(event: DashboardEvent) {
+  const date = new Date(event.date);
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true }).format(date).toUpperCase();
+}
+
 function UpcomingEventsPanel({ events, loading, error }: { events: DashboardEvent[]; loading: boolean; error: string }) {
   const prefersReducedMotion = useReducedMotion();
   if (loading) return <LoadingPanel title="Upcoming Events" />;
-  const colors = ["bg-orange-500", "bg-violet-500", "bg-sky-500", "bg-emerald-500", "bg-rose-500"];
+  const colors = ["bg-orange-500", "bg-violet-500", "bg-sky-500"];
   return (
     <Panel className="h-full">
-      <PanelHeading title="Upcoming Events" detail="Exams and outstanding fee due dates" />
+      <PanelHeading title="Upcoming Events" />
       {error ? <ErrorText error={error} /> : events.length ? (
-        <div className="space-y-3">
-          {events.slice(0, 5).map((event, index) => (
+        <div className="space-y-4">
+          {events.slice(0, 3).map((event, index) => (
             <motion.div
               key={event.id}
               initial={prefersReducedMotion ? false : { opacity: 0, y: 5 }}
@@ -360,13 +346,12 @@ function UpcomingEventsPanel({ events, loading, error }: { events: DashboardEven
               transition={{ duration: prefersReducedMotion ? 0 : 0.2, delay: prefersReducedMotion ? 0 : index * 0.02, ease: "easeOut" }}
               className="flex min-w-0 items-center gap-3"
             >
-              <span className={`h-10 w-1 shrink-0 rounded-full ${colors[index % colors.length]}`} />
+              <span className={`h-11 w-1 shrink-0 rounded-full ${colors[index % colors.length]}`} />
               <div className="min-w-0 flex-1">
-                <p className="text-[10px] font-medium text-slate-500">{eventTime(event)} · {event.kind === "exam" ? "Exam" : "Fee due"}</p>
+                <p className="text-[10px] font-medium tracking-wide text-slate-500">{eventTimeLabel(event)}</p>
                 <p className="truncate text-xs font-semibold text-[#171717]">{event.title}</p>
-                <p className="truncate text-[10px] text-slate-500">{event.detail}</p>
               </div>
-              <Link href={event.kind === "exam" ? "/dashboard/examinations" : "/dashboard/fees"} className="shrink-0 rounded-full border border-slate-200 px-2.5 py-1 text-[10px] text-slate-600 hover:border-[#e8622c] hover:text-[#e8622c]">View</Link>
+              <Link href={event.kind === "exam" ? "/dashboard/examinations" : "/dashboard/fees"} className="shrink-0 rounded-full bg-slate-100 px-3 py-1.5 text-[10px] font-medium text-slate-600 transition hover:bg-slate-200">View</Link>
             </motion.div>
           ))}
         </div>
@@ -415,7 +400,7 @@ function CalendarPanel({
           const selected = inMonth && selectedDate === key;
           return (
             <span key={`${key || "blank"}-${index}`} className="relative mx-auto flex size-8 items-center justify-center">
-              {inMonth && <button type="button" aria-label={`${new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long" }).format(new Date(month.getFullYear(), month.getMonth(), day))} ${day}${dots[key] ? `, ${dots[key]} events` : ""}`} aria-pressed={selected} onClick={() => setSelectedDate(key)} className={`flex size-7 items-center justify-center rounded-full text-[11px] transition hover:bg-orange-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#e8622c] ${isToday ? "bg-[#e8622c] font-semibold text-white hover:bg-[#d95625]" : selected ? "bg-slate-900 font-semibold text-white hover:bg-slate-800" : "text-slate-700"}`}>{day}</button>}
+              {inMonth && <button type="button" aria-label={`${new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long" }).format(new Date(month.getFullYear(), month.getMonth(), day))} ${day}${dots[key] ? `, ${dots[key]} events` : ""}`} aria-pressed={selected} onClick={() => setSelectedDate(key)} className={`flex size-7 items-center justify-center rounded-full text-[11px] transition hover:bg-orange-50 focus-visible:outline focus-visible:outline-[#e8622c] ${isToday ? "bg-[#e8622c] font-semibold text-white hover:bg-[#d95625]" : selected ? "bg-slate-900 font-semibold text-white hover:bg-slate-800" : "text-slate-700"}`}>{day}</button>}
               {inMonth && dots[key] && <i aria-label={`${dots[key]} events`} className={`absolute bottom-0.5 size-1 rounded-full ${isToday ? "bg-[#e8622c]" : "bg-violet-500"}`} />}
             </span>
           );
@@ -432,24 +417,26 @@ function CalendarPanel({
 }
 
 function ComingUp({ events, now }: { events: DashboardEvent[]; now: Date }) {
-  const today = now;
   const upcoming = events.slice(0, 2);
   return (
     <Panel>
-      <PanelHeading title="Akan Datang" detail="Your next scheduled items" />
+      <PanelHeading
+        title="Upcoming"
+        action={<Link href="/dashboard/calendar" className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 hover:text-slate-900">See all <ChevronRight size={13} /></Link>}
+      />
       {upcoming.length ? <div className="space-y-3">
         {upcoming.map((event) => {
-          const days = Math.max(0, Math.ceil((new Date(event.date).getTime() - today.getTime()) / 86400000));
+          const eventDate = new Date(event.date);
+          const days = Number.isNaN(eventDate.getTime()) ? null : Math.max(0, Math.ceil((eventDate.getTime() - now.getTime()) / 86400000));
           const Icon = event.kind === "exam" ? BookOpen : CircleDollarSign;
           return (
             <Link key={event.id} href={event.kind === "exam" ? "/dashboard/examinations" : "/dashboard/fees"} className="flex items-center gap-3 rounded-2xl p-2 transition hover:bg-slate-50">
-              <span className={`flex size-9 shrink-0 items-center justify-center rounded-full ${event.kind === "exam" ? "bg-violet-100 text-violet-700" : "bg-orange-100 text-orange-700"}`}><Icon size={16} /></span>
+              <span className={`flex size-10 shrink-0 items-center justify-center rounded-full ${event.kind === "exam" ? "bg-violet-500 text-white" : "bg-[#e8622c] text-white"}`}><Icon size={16} /></span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-xs font-semibold text-slate-800">{event.title}</span>
-                <span className="block truncate text-[10px] text-slate-500">{event.detail}</span>
+                <span className="block truncate text-[10px] text-slate-500">{event.detail}{days === null ? "" : days === 0 ? " · Today" : ` · ${days} ${days === 1 ? "day" : "days"} left`}</span>
               </span>
-              <span className="shrink-0 text-[10px] text-slate-500">{days === 0 ? "Today" : `in ${days}d`}</span>
-              <ChevronRight size={14} className="shrink-0 text-slate-400" />
+              <ChevronRight size={15} className="shrink-0 text-slate-400" />
             </Link>
           );
         })}
@@ -458,19 +445,20 @@ function ComingUp({ events, now }: { events: DashboardEvent[]; now: Date }) {
   );
 }
 
-function AnnouncementsPanel() {
+function AnnouncementsPanel({ events }: { events?: DashboardEvent[] }) {
+  const next = events?.[0];
   return (
-    <section className="relative overflow-hidden rounded-3xl bg-[radial-gradient(ellipse_at_top_right,rgba(232,98,44,0.3),transparent_46%),#111827] p-5 text-white shadow-[0_16px_36px_rgba(17,24,39,0.18)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_20px_44px_rgba(17,24,39,0.22)] sm:p-6">
-      <span className="flex size-9 items-center justify-center rounded-2xl bg-white/10 text-orange-300"><Bell size={17} /></span>
-      <Link href="/dashboard/calendar" aria-label="View upcoming school events" className="absolute right-5 top-5 flex size-9 items-center justify-center rounded-full bg-white text-[#0a0a0a] transition hover:scale-105"><ArrowRight size={16} /></Link>
-      <h2 className="mt-5 text-base font-semibold">Promo Terbaik</h2>
-      <p className="mt-1 max-w-xs text-xs leading-5 text-white/65">Make important school dates easy to find in your calendar.</p>
+    <section className="relative overflow-hidden rounded-3xl bg-[#0b0b0e] p-5 text-white shadow-[0_16px_36px_rgba(17,24,39,0.22)] sm:p-6">
+      <span className="flex size-10 items-center justify-center rounded-2xl bg-[#e8622c] text-white"><Bell size={17} /></span>
+      <Link href="/dashboard/calendar" aria-label="View school notices" className="absolute right-5 top-5 flex size-9 items-center justify-center rounded-full bg-white text-black transition hover:scale-105"><ArrowRight size={16} /></Link>
+      <h2 className="mt-5 text-base font-semibold">{next ? next.title : "School Notice"}</h2>
+      <p className="mt-1 max-w-xs text-xs leading-5 text-white/65">{next ? `${next.detail} · ${formatDate(next.date, { day: "numeric", month: "short" })}` : "Important dates and announcements will appear here."}</p>
     </section>
   );
 }
 
 function MetricSkeleton() {
-  return <div aria-hidden="true" className="min-h-[170px] animate-pulse rounded-3xl bg-slate-200/70 p-5"><span className="block size-10 rounded-2xl bg-white/70" /><span className="mt-5 block h-3 w-24 rounded-full bg-white/70" /><span className="mt-2 block h-8 w-32 rounded-full bg-white/70" /></div>;
+  return <div aria-hidden="true" className="min-h-42.5 animate-pulse rounded-3xl bg-slate-200/70 p-5"><span className="block size-10 rounded-2xl bg-white/70" /><span className="mt-5 block h-3 w-24 rounded-full bg-white/70" /><span className="mt-2 block h-8 w-32 rounded-full bg-white/70" /></div>;
 }
 
 function Overview({
@@ -495,27 +483,33 @@ function Overview({
     attendance: metrics.attendance === null ? "—" : `${metrics.attendance.toFixed(1)}%`,
     dueFees: formatMoney(metrics.dueFees, true),
   };
-  const detail: Record<(typeof pastelCards)[number]["key"], string> = {
-    students: "Live database total",
-    teachers: "Live database total",
-    attendance: metrics.attendance === null ? "No attendance marked" : "All recorded attendance",
-    dueFees: "Outstanding balance",
-  };
   const target: Record<(typeof pastelCards)[number]["key"], number | null> = {
     students: metrics.students,
     teachers: metrics.teachers,
     attendance: metrics.attendance,
     dueFees: metrics.dueFees,
   };
+  const trends: Record<(typeof pastelCards)[number]["key"], number | null> = {
+    students: data.trends?.students ?? null,
+    teachers: data.trends?.teachers ?? null,
+    attendance: data.trends?.attendance ?? null,
+    dueFees: data.trends?.dueFees ?? null,
+  };
+  const fallbackDetail: Record<(typeof pastelCards)[number]["key"], string> = {
+    students: "Live database total",
+    teachers: "Live database total",
+    attendance: metrics.attendance === null ? "No attendance marked" : "All recorded attendance",
+    dueFees: "Outstanding balance",
+  };
 
   return (
     <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-[minmax(210px,3fr)_minmax(0,5fr)_minmax(250px,3fr)]">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-1">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:col-span-2 xl:col-span-1 xl:grid-cols-1">
         {loading
           ? pastelCards.map((item) => <MetricSkeleton key={item.key} />)
           : error
             ? <Panel className="sm:col-span-2 xl:col-span-1"><ErrorText error={error} /></Panel>
-            : pastelCards.map((item, index) => <MetricCard key={item.key} item={item} value={values[item.key]} target={target[item.key]} detail={detail[item.key]} index={index} />)}
+            : pastelCards.map((item, index) => <MetricCard key={item.key} item={item} value={values[item.key]} target={target[item.key]} trend={trends[item.key]} detail={fallbackDetail[item.key]} index={index} />)}
       </div>
       <div className="flex min-w-0 flex-col gap-5">
         <RevenuePanel data={data} loading={loading} error={error} />
@@ -526,8 +520,8 @@ function Overview({
       </div>
       <div className="flex min-w-0 flex-col gap-5 md:col-span-2 xl:col-span-1">
         {loading || !month ? <LoadingPanel title="Calendar" /> : error ? <Panel><ErrorText error={error} /></Panel> : <CalendarPanel month={month} onMonthChange={onMonthChange} dots={data.calendarDots} today={today} />}
-        {loading ? <LoadingPanel title="Coming Up" /> : error ? <Panel><ErrorText error={error} /></Panel> : <ComingUp events={data.events} now={today} />}
-        <AnnouncementsPanel />
+        {loading ? <LoadingPanel title="Upcoming" /> : error ? <Panel><ErrorText error={error} /></Panel> : <ComingUp events={data.events} now={today} />}
+        {loading ? <LoadingPanel title="School Notice" /> : <AnnouncementsPanel events={data.events} />}
       </div>
     </div>
   );
@@ -580,6 +574,16 @@ function StudentsPage({ reload }: { reload: () => void }) {
   }, [query, sort, statusFilter, students]);
   const pageCount = Math.max(1, Math.ceil(visibleStudents.length / 20));
   const pagedStudents = visibleStudents.slice((Math.min(page, pageCount) - 1) * 20, Math.min(page, pageCount) * 20);
+  const selectableClasses = useMemo(() => {
+    const existing = new Map(classOptions.map((item) => [`${item.grade}-${item.section}`, item]));
+    for (let grade = 1; grade <= 12; grade += 1) {
+      for (const section of ["A", "B", "C", "D"]) {
+        const key = `${grade}-${section}`;
+        if (!existing.has(key)) existing.set(key, { grade, section });
+      }
+    }
+    return [...existing.values()].sort((left, right) => left.grade - right.grade || left.section.localeCompare(right.section));
+  }, [classOptions]);
 
   async function saveStudent(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -638,7 +642,7 @@ function StudentsPage({ reload }: { reload: () => void }) {
           <form key={formStudent?.id ?? "new"} onSubmit={saveStudent} className="mb-5 grid gap-3 rounded-2xl bg-slate-50 p-4 sm:grid-cols-2 lg:grid-cols-4">
             <label className="text-xs font-medium text-slate-700">Full name<input name="name" required minLength={2} maxLength={100} defaultValue={formStudent?.name} placeholder="First and last name" className="mt-1 block min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm" /></label>
             <label className="text-xs font-medium text-slate-700">Email<input name="email" type="email" required maxLength={254} defaultValue={formStudent?.email} placeholder="student@example.com" className="mt-1 block min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm" /></label>
-            <label className="text-xs font-medium text-slate-700">Class<select name="className" required defaultValue={formStudent?.className ?? ""} className="mt-1 block min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"><option value="" disabled>{classOptions.length ? "Select class" : "No classes available"}</option>{classOptions.map((item) => <option key={`${item.grade}-${item.section}`}>Grade {item.grade} · Section {item.section}</option>)}</select></label>
+            <label className="text-xs font-medium text-slate-700">Class<select name="className" required defaultValue={formStudent?.className ?? ""} className="mt-1 block min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"><option value="" disabled>Select class</option>{selectableClasses.map((item) => <option key={`${item.grade}-${item.section}`}>Grade {item.grade} · Section {item.section}</option>)}</select></label>
             {formStudent?.id && <label className="text-xs font-medium text-slate-700">Status<select name="status" defaultValue={formStudent.status.toUpperCase().replaceAll(" ", "_")} className="mt-1 block min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm">{["ACTIVE", "ON_LEAVE", "PENDING", "GRADUATED"].map((status) => <option key={status} value={status}>{status.replaceAll("_", " ")}</option>)}</select></label>}
             <div className="flex items-end gap-2"><button type="submit" disabled={saving} className="min-h-11 rounded-xl bg-[#0a0a0a] px-4 text-sm font-semibold text-white disabled:opacity-50">{saving ? "Saving…" : formStudent?.id ? "Save changes" : "Create student"}</button><button type="button" onClick={() => setFormStudent(undefined)} className="min-h-11 rounded-xl border border-slate-200 px-4 text-sm">Cancel</button></div>
           </form>
@@ -806,7 +810,6 @@ export function AdminDashboard({ initialSection = "overview" }: { initialSection
   const [month, setMonth] = useState<Date | null>(null);
   const [monthKey, setMonthKey] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const notificationsRef = useRef<HTMLDivElement>(null);
@@ -818,7 +821,6 @@ export function AdminDashboard({ initialSection = "overview" }: { initialSection
       if (event instanceof KeyboardEvent && event.key === "Escape") {
         setNotificationsOpen(false);
         setProfileOpen(false);
-        setMenuOpen(false);
         return;
       }
       if (event instanceof PointerEvent && event.target instanceof Node) {
@@ -867,26 +869,20 @@ export function AdminDashboard({ initialSection = "overview" }: { initialSection
 
   return (
     <main className="min-h-screen bg-[#f2f4f7] p-3 text-[#0a0a0a] sm:p-5 lg:p-8">
-      <div className="mx-auto min-h-[calc(100vh-1.5rem)] max-w-[1660px] rounded-[28px] border border-white bg-white/65 p-3 shadow-[0_24px_80px_rgba(42,50,65,0.08)] backdrop-blur-xl sm:rounded-[36px] sm:p-5 lg:min-h-[calc(100vh-4rem)] lg:p-7">
+      <div className="dashboard-glass mx-auto min-h-[calc(100vh-1.5rem)] max-w-[1660px] rounded-3xl p-3 sm:rounded-3xl sm:p-5 lg:min-h-[calc(100vh-4rem)] lg:p-7">
         <header className="mb-6 flex min-w-0 flex-wrap items-center justify-between gap-3 sm:mb-8">
-          <Link href="/dashboard" className="shrink-0 text-lg font-bold tracking-tight text-[#0a0a0a] sm:text-xl">EduManage</Link>
-          <nav aria-label="Primary navigation" className="order-3 flex w-full min-w-0 max-w-full flex-none items-center justify-start gap-1 overflow-x-auto rounded-full border border-white bg-white/75 p-1 shadow-sm sm:order-none sm:w-auto sm:flex-1 sm:justify-center sm:gap-2 sm:px-2">
+          <Link href="/dashboard" aria-label="EduManage home" className="flex shrink-0 items-center gap-2">
+            <Image src="/edumanage-logo.svg" alt="" width={36} height={36} className="size-9 rounded-2xl" priority />
+            <span className="text-xl font-extrabold tracking-tight text-[#0a0a0a]">Edu<span className="text-[#e8622c]">Manage</span></span>
+          </Link>
+          <nav aria-label="Primary navigation" className="order-3 flex w-full min-w-0 max-w-full flex-none items-center justify-start gap-1 overflow-x-auto rounded-full bg-white p-1.5 shadow-[0_10px_30px_rgba(36,48,60,0.08)] sm:order-0 sm:w-auto sm:flex-1 sm:justify-center sm:gap-2 sm:px-2">
             {navItems.map((item) => {
               const Icon = item.icon;
-              const active = item.section === section || (item.section === "examinations" && section === "fees");
-              if (item.section !== "examinations") return (
-                <Link key={item.href} href={item.href} aria-label={item.label} title={item.label} aria-current={active ? "page" : undefined} className={`flex size-9 shrink-0 items-center justify-center rounded-full transition sm:size-10 ${active ? "bg-[#0a0a0a] text-white" : "text-slate-500 hover:bg-slate-100 hover:text-[#0a0a0a]"}`}>
-                  <Icon size={17} strokeWidth={1.9} />
-                </Link>
-              );
+              const active = item.section === section || (item.section === "fees" && (section === "fees" || section === "examinations" || section === "academic-records"));
               return (
-                <div key={item.href} className="relative flex shrink-0 items-center">
-                  <Link href={item.href} aria-label={item.label} title={item.label} aria-current={active ? "page" : undefined} className={`flex size-9 items-center justify-center rounded-full transition sm:size-10 ${active ? "bg-[#0a0a0a] text-white" : "text-slate-500 hover:bg-slate-100 hover:text-[#0a0a0a]"}`}><Icon size={17} strokeWidth={1.9} /></Link>
-                  <button type="button" aria-label="Choose examinations or fees" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)} className="-ml-1 rounded-full p-1 text-slate-500 hover:bg-slate-100"><ChevronDown size={12} /></button>
-                  {menuOpen && <div className="absolute left-0 top-12 z-20 min-w-40 rounded-2xl border border-slate-100 bg-white p-1.5 shadow-xl">
-                    {[["Examinations", "/dashboard/examinations"], ["Fees", "/dashboard/fees"], ["Academic records", "/dashboard/academic-records"]].map(([label, href]) => <Link key={href} href={href} onClick={() => setMenuOpen(false)} className="block rounded-xl px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">{label}</Link>)}
-                  </div>}
-                </div>
+                <Link key={item.href} href={item.href} aria-label={item.label} title={item.label} aria-current={active ? "page" : undefined} className={`flex size-10 shrink-0 items-center justify-center rounded-full transition sm:size-11 ${active ? "bg-black text-white shadow-md" : "text-slate-500 hover:bg-slate-100 hover:text-[#0a0a0a]"}`}>
+                  <Icon size={18} strokeWidth={active ? 2.2 : 1.9} />
+                </Link>
               );
             })}
           </nav>

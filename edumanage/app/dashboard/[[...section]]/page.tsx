@@ -1,5 +1,9 @@
 import { Suspense } from "react";
+import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
+import { connection } from "next/server";
 import { AdminDashboard } from "../../components/admin-dashboard";
+import { readSession } from "../../lib/auth";
 
 const supportedSections = [
   "overview",
@@ -32,6 +36,15 @@ export default function DashboardPage({
 async function DashboardContent({
   params,
 }: { params: PageProps<"/dashboard/[[...section]]">["params"] }) {
+  // Server-side gate: APIs each re-verify, but the page itself must not
+  // render student PII to an unauthenticated visitor.
+  // `connection()` opts this subtree out of static caching under
+  // `cacheComponents` (where legacy `export const dynamic` is rejected).
+  await connection();
+  const store = await cookies();
+  if (!readSession(store.get("edumanage-session")?.value)) {
+    redirect("/login");
+  }
   const { section } = await params;
   return <AdminDashboard initialSection={parseSection(section)} />;
 }

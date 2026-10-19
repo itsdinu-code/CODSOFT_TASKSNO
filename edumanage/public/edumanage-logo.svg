@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
+  <title id="title">EduManage</title>
+  <desc id="desc">A green graduation mark with an orange spark</desc>
+  <rect width="128" height="128" rx="32" fill="#0a0a0a"/>
+  <path d="m22 48 42-22 42 22-42 22-42-22Z" fill="#fff"/>
+  <path d="M38 59v17c0 8 12 16 26 16s26-8 26-16V59L64 73 38 59Z" fill="#e8622c"/>
+  <path d="M105 47v27" stroke="#fff" stroke-linecap="round" stroke-width="5"/>
+  <circle cx="105" cy="78" r="4" fill="#e8622c"/>
+</svg>

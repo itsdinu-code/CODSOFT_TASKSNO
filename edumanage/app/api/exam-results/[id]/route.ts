@@ -1,3 +1,4 @@
+import { requireSession } from "../../../lib/auth";
 import { getPrismaClient } from "../../../lib/prisma";
 import {
   databaseUnavailable,
@@ -5,12 +6,15 @@ import {
   invalid,
   optionalText,
   readJson,
+  validId,
   validAmount,
 } from "../../../lib/academic-api";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
 export async function PATCH(request: Request, { params }: RouteContext) {
+  const session = requireSession(request);
+  if (session instanceof Response) return session;
   if (!process.env.DATABASE_URL) return databaseUnavailable();
   const body = await readJson(request);
   if (body instanceof Response) return body;
@@ -33,7 +37,9 @@ export async function PATCH(request: Request, { params }: RouteContext) {
   if (!Object.keys(data).length) return invalid("Provide at least one field to update.");
   try {
     const prisma = getPrismaClient();
-    const { id } = await params;
+    const { id: rawId } = await params;
+    const id = validId(rawId);
+    if (!id) return Response.json({ error: "Invalid record id." }, { status: 400 });
     if (data.score !== undefined) {
       const existing = await prisma.examResult.findUnique({
         where: { id },
@@ -53,10 +59,14 @@ export async function PATCH(request: Request, { params }: RouteContext) {
   }
 }
 
-export async function DELETE(_request: Request, { params }: RouteContext) {
+export async function DELETE(request: Request, { params }: RouteContext) {
+  const session = requireSession(request);
+  if (session instanceof Response) return session;
   if (!process.env.DATABASE_URL) return databaseUnavailable();
   try {
-    const { id } = await params;
+    const { id: rawId } = await params;
+    const id = validId(rawId);
+    if (!id) return Response.json({ error: "Invalid record id." }, { status: 400 });
     await getPrismaClient().examResult.delete({ where: { id } });
     return Response.json({ deleted: true });
   } catch (error) {

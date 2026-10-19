@@ -1,3 +1,4 @@
+import { requireSession } from "../../../lib/auth";
 import { getPrismaClient } from "../../../lib/prisma";
 import {
   databaseUnavailable,
@@ -5,6 +6,7 @@ import {
   invalid,
   optionalText,
   readJson,
+  validId,
   requiredText,
   validAmount,
 } from "../../../lib/academic-api";
@@ -16,10 +18,14 @@ const recordInclude = {
   subject: { select: { id: true, name: true, code: true } },
 };
 
-export async function GET(_request: Request, { params }: RouteContext) {
+export async function GET(request: Request, { params }: RouteContext) {
+  const session = requireSession(request);
+  if (session instanceof Response) return session;
   if (!process.env.DATABASE_URL) return databaseUnavailable();
   try {
-    const { id } = await params;
+    const { id: rawId } = await params;
+    const id = validId(rawId);
+    if (!id) return Response.json({ error: "Invalid record id." }, { status: 400 });
     const data = await getPrismaClient().academicRecord.findUnique({ where: { id }, include: recordInclude });
     return data
       ? Response.json({ data, source: "database" })
@@ -30,6 +36,8 @@ export async function GET(_request: Request, { params }: RouteContext) {
 }
 
 export async function PATCH(request: Request, { params }: RouteContext) {
+  const session = requireSession(request);
+  if (session instanceof Response) return session;
   if (!process.env.DATABASE_URL) return databaseUnavailable();
   const body = await readJson(request);
   if (body instanceof Response) return body;
@@ -100,10 +108,14 @@ export async function PATCH(request: Request, { params }: RouteContext) {
   }
 }
 
-export async function DELETE(_request: Request, { params }: RouteContext) {
+export async function DELETE(request: Request, { params }: RouteContext) {
+  const session = requireSession(request);
+  if (session instanceof Response) return session;
   if (!process.env.DATABASE_URL) return databaseUnavailable();
   try {
-    const { id } = await params;
+    const { id: rawId } = await params;
+    const id = validId(rawId);
+    if (!id) return Response.json({ error: "Invalid record id." }, { status: 400 });
     await getPrismaClient().academicRecord.delete({ where: { id } });
     return Response.json({ deleted: true });
   } catch (error) {

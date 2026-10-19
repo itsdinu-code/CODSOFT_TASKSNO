@@ -1,3 +1,4 @@
+import { requireSession } from "../../lib/auth";
 import { getPrismaClient } from "../../lib/prisma";
 import {
   databaseUnavailable,
@@ -15,7 +16,9 @@ const recordInclude = {
   subject: { select: { id: true, name: true, code: true } },
 };
 
-export async function GET() {
+export async function GET(request: Request) {
+  const session = requireSession(request);
+  if (session instanceof Response) return session;
   if (!process.env.DATABASE_URL) return databaseUnavailable();
   try {
     const data = await getPrismaClient().academicRecord.findMany({
@@ -30,6 +33,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const session = requireSession(request);
+  if (session instanceof Response) return session;
   if (!process.env.DATABASE_URL) return databaseUnavailable();
   const body = await readJson(request);
   if (body instanceof Response) return body;

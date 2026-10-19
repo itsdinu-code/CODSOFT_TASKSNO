@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { Prisma } from "../../../../generated/prisma/client";
+import { requireSession } from "../../../lib/auth";
 import { getPrismaClient } from "../../../lib/prisma";
+import { validEmail } from "../../../lib/academic-api";
 
 const MAX_FILE_BYTES = 1024 * 1024;
 const MAX_ROWS = 500;
@@ -109,7 +111,8 @@ function toImportRows(csv: string): { rows: ImportRow[]; ignoredColumns: string[
     if (name.length < 2 || name.length > 100 || nameParts.length < 2) {
       throw new Error(`CSV line ${line}: enter the student's first and last name.`);
     }
-    if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    const clean = validEmail(email);
+    if (!clean) {
       throw new Error(`CSV line ${line}: enter a valid email address.`);
     }
     if (seenEmails.has(email)) {
@@ -118,6 +121,17 @@ function toImportRows(csv: string): { rows: ImportRow[]; ignoredColumns: string[
     seenEmails.add(email);
     if (!classMatch) {
       throw new Error(`CSV line ${line}: class must look like "Grade 10 · Section A".`);
+    }
+
+    const gradeNum = Number(classMatch[1]);
+    if (!Number.isInteger(gradeNum) || gradeNum < 1 || gradeNum > 12) {
+      throw new Error(`CSV line ${line}: grade must be between 1 and 12.`);
+    }
+    const firstNameCode = name.length ? name.charCodeAt(0) : 0;
+    const firstEmailCode = email.length ? email.charCodeAt(0) : 0;
+    const badStart = (c: number) => c === 61 || c === 43 || c === 64 || c === 9 || c === 13;
+    if (badStart(firstNameCode) || badStart(firstEmailCode)) {
+      throw new Error(`CSV line ${line}: value must not start with =, +, @, tab, or carriage return.`);
     }
 
     const statusValue = statusColumn < 0 ? "active" : values[statusColumn].trim().toLowerCase();
@@ -136,7 +150,7 @@ function toImportRows(csv: string): { rows: ImportRow[]; ignoredColumns: string[
 
     return {
       name,
-      email,
+      email: clean,
       grade: Number(classMatch[1]),
       section: classMatch[2].toUpperCase(),
       status,
@@ -148,11 +162,18 @@ function toImportRows(csv: string): { rows: ImportRow[]; ignoredColumns: string[
 }
 
 export async function POST(request: Request) {
+  const session = requireSession(request);
+  if (session instanceof Response) return session;
   if (!process.env.DATABASE_URL) {
     return Response.json(
       { error: "DATABASE_URL is not configured. Add your PostgreSQL connection string to edumanage/.env." },
       { status: 503 },
     );
+  }
+
+  const contentType = request.headers.get("content-type") ?? "";
+  if (contentType && contentType.split(";")[0].trim().toLowerCase() !== "text/csv") {
+    return Response.json({ error: "Upload a CSV file with Content-Type text/csv." }, { status: 415 });
   }
 
   const contentLength = Number(request.headers.get("content-length") ?? 0);
