@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import Image from "next/image";
 import { SiteFooter } from "./components/site-footer";
 
 export const metadata: Metadata = {
@@ -19,7 +20,10 @@ export default function Home() {
   return (
     <div className="flex min-h-full flex-1 flex-col">
       <main className="mx-auto w-full max-w-6xl flex-1 px-6 pb-16 pt-14">
-        <p className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-700">EduManage</p>
+        <Link href="/" aria-label="EduManage home" className="inline-flex items-center gap-2">
+          <Image src="/edumanage-logo.svg" alt="" width={44} height={44} className="size-11 rounded-2xl" priority />
+          <span className="text-2xl font-extrabold tracking-tight text-slate-900">Edu<span className="text-[#e8622c]">Manage</span></span>
+        </Link>
         <div className="mt-4 grid items-center gap-10 lg:grid-cols-[1.1fr_0.9fr]">
           <div>
             <h1 className="text-4xl font-bold leading-tight text-slate-900 sm:text-5xl">
@@ -44,7 +48,6 @@ export default function Home() {
               </Link>
             </div>
             <p className="mt-4 text-xs text-slate-600">
-              PostgreSQL-backed records · Development-ready authentication ·{" "}
               <Link className="underline" href="/privacy-policy">Privacy</Link> ·{" "}
               <Link className="underline" href="/terms">Terms</Link>
             </p>
